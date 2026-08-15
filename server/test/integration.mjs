@@ -8,8 +8,8 @@
  * Covers the things that matter most for a multi-tenant product: role gates,
  * cross-tenant isolation, order-state legality, and server-side pricing.
  *
- * Note: sign-in is rate limited to 20 attempts per IP per 15 minutes. Running
- * this suite several times in a row will trip that — restart the API to clear it.
+ * Sign-in throttling counts only failures, and is keyed per account, so running
+ * this suite repeatedly does not lock anything out.
  */
 const API = process.env.API_URL || 'http://localhost:4000/api';
 
@@ -48,6 +48,34 @@ ok((await call('/platform/stats', { token: owner })).status === 403, 'OWNER bloc
 ok((await call('/platform/stats', { token: platform })).status === 200, 'PLATFORM_ADMIN can read platform stats');
 ok((await call('/admin/orders/live', { token: platform })).status === 400, 'PLATFORM_ADMIN must name a restaurant');
 
+console.log('\n── SIGN-IN THROTTLING ──');
+// Successful sign-ins must not consume the budget, or switching between the
+// owner, manager and staff accounts would lock the whole restaurant out.
+let switching = true;
+for (let round = 0; round < 6 && switching; round++) {
+  for (const [email, password] of [
+    ['owner@delightfood.in', 'owner123'],
+    ['manager@delightfood.in', 'manager123'],
+    ['staff@delightfood.in', 'staff123'],
+    ['platform@delightful.app', 'platform123'],
+  ]) {
+    if ((await call('/auth/login', { method: 'POST', body: { email, password } })).status !== 200) switching = false;
+  }
+}
+ok(switching, 'switching between four accounts repeatedly is never throttled');
+
+// A throwaway email, so brute-forcing in a test never locks out a real account.
+const victim = `throttle-${Date.now().toString(36)}@example.test`;
+let throttledAt = null;
+for (let i = 1; i <= 16 && throttledAt === null; i++) {
+  if ((await call('/auth/login', { method: 'POST', body: { email: victim, password: `guess-${i}` } })).status === 429) {
+    throttledAt = i;
+  }
+}
+ok(throttledAt !== null, `repeated failures against one email are throttled (after ${throttledAt})`);
+ok((await call('/auth/login', { method: 'POST', body: { email: 'owner@delightfood.in', password: 'owner123' } })).status === 200,
+  'throttling one email leaves every other account signable');
+
 console.log('\n── TENANT ISOLATION ──');
 const mine = (await call('/admin/orders?pageSize=1', { token: owner })).json;
 const theirs = (await call('/admin/orders?pageSize=1', { token: rival })).json;
@@ -76,6 +104,13 @@ for (const stale of (await call('/admin/menu/items?search=Test', { token: owner 
 }
 for (const stale of (await call('/admin/menu/items?search=Renamed', { token: owner })).json.items ?? []) {
   await call(`/admin/menu/items/${stale.id}`, { token: owner, method: 'DELETE' });
+}
+// A crashed run can leave items behind in the test category; clear it out entirely.
+for (const cat of (await call('/admin/menu/categories', { token: owner })).json.categories ?? []) {
+  if (cat.name !== 'Test Cat') continue;
+  for (const stale of (await call(`/admin/menu/items?categoryId=${cat.id}`, { token: owner })).json.items ?? []) {
+    await call(`/admin/menu/items/${stale.id}`, { token: owner, method: 'DELETE' });
+  }
 }
 for (const stale of (await call('/admin/menu/categories', { token: owner })).json.categories ?? []) {
   if (stale.name === 'Test Cat') await call(`/admin/menu/categories/${stale.id}`, { token: owner, method: 'DELETE' });
@@ -123,13 +158,35 @@ ok((await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH',
 const renamed = await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH', body: { name: 'Test Renamed' } });
 ok(renamed.status === 200 && renamed.json.item.name === 'Test Renamed', 'partial update of a single field works');
 
+console.log('\n── ACCEPTING-ORDERS SWITCH ──');
+// Also establishes the precondition the lifecycle tests below depend on, rather
+// than assuming whatever state the restaurant happened to be left in.
+const settingsNow = (await call('/admin/settings', { token: owner })).json.restaurant;
+if (settingsNow.isAcceptingOrders) await call('/admin/settings/toggle-orders', { token: owner, method: 'POST' });
+ok((await call('/admin/settings', { token: owner })).json.restaurant.isAcceptingOrders === false, 'orders can be paused');
+
+const whileClosed = await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: (await call('/public/menu?restaurant=delight-food')).json.categories[0].items[0].id, quantity: 1 }],
+          customerName: 'Closed Test', tableId: (await call('/public/tables?restaurant=delight-food')).json.tables[0].id } });
+ok(whileClosed.status === 400 && /not taking orders/i.test(whileClosed.json.error || ''),
+  'customers cannot order while paused');
+
+await call('/admin/settings/toggle-orders', { token: owner, method: 'POST' });
+ok((await call('/admin/settings', { token: owner })).json.restaurant.isAcceptingOrders === true, 'orders can be resumed');
+
 console.log('\n── ORDER LIFECYCLE ──');
 const menu = (await call('/public/menu?restaurant=delight-food')).json;
 const item = menu.categories.flatMap((c) => c.items).find((i) => i.isAvailable && !i.variants.length);
 const tbl = (await call('/public/tables?restaurant=delight-food')).json.tables[0];
-const placed = (await call('/public/orders?restaurant=delight-food', { method: 'POST',
-  body: { cart: [{ menuItemId: item.id, quantity: 3 }], customerName: 'Lifecycle Test', customerPhone: '9000000001', tableId: tbl.id } })).json.order;
-ok(placed.status === 'PLACED', 'order placed');
+const placedRes = await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 3 }], customerName: 'Lifecycle Test', customerPhone: '9000000001', tableId: tbl.id } });
+if (placedRes.status === 429) {
+  console.log(`\n  ! Order rate limit reached (${placedRes.json.error})`);
+  console.log('    Restart the API to clear the in-memory counter, then re-run.\n');
+  process.exit(1);
+}
+const placed = placedRes.json.order;
+ok(placed?.status === 'PLACED', `order placed${placed ? '' : ` — got ${placedRes.status}: ${placedRes.json.error}`}`);
 ok(Number(placed.subtotal) === Number(item.basePrice) * 3, 'server priced the cart itself');
 
 ok((await call(`/admin/orders/${placed.id}/status`, { token: owner, method: 'PATCH', body: { status: 'READY' } })).status === 400,

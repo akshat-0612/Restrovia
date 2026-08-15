@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
 
 const DEMO = [
@@ -10,6 +11,7 @@ const DEMO = [
 
 export default function Login() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -22,6 +24,9 @@ export default function Login() {
     setError(null);
     try {
       await login({ email: form.email.trim(), password: form.password });
+      // Start at the top rather than wherever the last user happened to be —
+      // a restaurant owner has no business landing on the platform screen.
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

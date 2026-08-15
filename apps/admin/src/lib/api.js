@@ -30,7 +30,7 @@ export const onAuthFailure = (handler) => {
   return () => window.removeEventListener(AUTH_FAILED, handler);
 };
 
-async function request(path, { method = 'GET', body, signal, raw = false } = {}) {
+async function request(path, { method = 'GET', body, signal, raw = false, isSignIn = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const token = tokenStore.get();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -49,7 +49,9 @@ async function request(path, { method = 'GET', body, signal, raw = false } = {})
     throw new ApiError('Cannot reach the server. Check your connection.', 0);
   }
 
-  if (response.status === 401) {
+  // A 401 anywhere else means the session died; on the sign-in call itself it
+  // just means the credentials were wrong, and the server's message says so.
+  if (response.status === 401 && !isSignIn) {
     tokenStore.clear();
     window.dispatchEvent(new Event(AUTH_FAILED));
     throw new ApiError('Your session expired. Please sign in again.', 401);
@@ -77,7 +79,7 @@ const qs = (params) => {
 
 export const api = {
   // Auth
-  login:  (body) => request('/auth/login', { method: 'POST', body }),
+  login:  (body) => request('/auth/login', { method: 'POST', body, isSignIn: true }),
   me:     (signal) => request('/auth/me', { signal }),
   changePassword: (body) => request('/auth/change-password', { method: 'POST', body }),
 

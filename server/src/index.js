@@ -48,11 +48,63 @@ app.use(cors({
 
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 
-app.use('/api/auth/login', rateLimit({
-  windowMs: 15 * 60 * 1000, max: 20,
-  message: { error: 'Too many sign-in attempts. Try again in a few minutes.' },
-  standardHeaders: true, legacyHeaders: false,
-}));
+/**
+ * Collapses a client address to a stable key. IPv6 is cut to its /64 prefix so a
+ * client with a large allocation can't sidestep a limit by rotating the host bits;
+ * IPv4-mapped addresses (::ffff:1.2.3.4) are unwrapped first.
+ */
+function clientKey(req) {
+  const raw = req.ip || req.socket?.remoteAddress || 'unknown';
+  const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+  if (!ip.includes(':')) return ip;
+  return `${ip.split(':').slice(0, 4).join(':')}::/64`;
+}
+
+/**
+ * Sign-in throttling, in two layers.
+ *
+ * The inner layer is keyed on address *and* email rather than address alone,
+ * because a restaurant's whole team signs in from one NAT'd IP — the kitchen
+ * tablet, the manager's phone, the owner's laptop. Keyed on address only, one
+ * person mistyping their password locks out everybody else, and simply moving
+ * between accounts burns the budget for all of them.
+ *
+ * Successful sign-ins are not counted. A correct password is proof of identity,
+ * not evidence of an attack, so only failures consume the allowance.
+ *
+ * There is deliberately no per-email limit spanning all addresses: it would let
+ * anyone lock a known owner out of their own restaurant just by failing against
+ * their email repeatedly.
+ */
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_RATE_LIMIT || 10),
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `${clientKey(req)}|${String(req.body?.email || '').trim().toLowerCase()}`,
+  message: {
+    error: 'Too many failed sign-in attempts for this account. Try again in a few minutes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+});
+
+/**
+ * Outer backstop against one host spraying many different emails. Loose enough
+ * that a busy restaurant on shared wifi will never reach it.
+ */
+const loginSprayLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_SPRAY_LIMIT || 100),
+  skipSuccessfulRequests: true,
+  keyGenerator: clientKey,
+  message: { error: 'Too many failed sign-in attempts from this network. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+});
+
+app.use('/api/auth/login', loginLimiter, loginSprayLimiter);
 
 app.get('/api/health', async (_req, res) => {
   try {

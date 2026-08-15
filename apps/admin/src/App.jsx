@@ -19,7 +19,7 @@ import Settings from './pages/Settings';
 import PlatformRestaurants from './pages/platform/PlatformRestaurants';
 
 export default function App() {
-  const { user, status, restaurantId, isPlatformAdmin } = useAuth();
+  const { status, restaurantId, isPlatformAdmin } = useAuth();
   const location = useLocation();
 
   if (status === 'checking') return <div className="boot"><Spinner label="Signing you in…" /></div>;
@@ -32,7 +32,7 @@ export default function App() {
   }
   if (needsRestaurant) return <PlatformShell />;
 
-  return <AdminShell key={restaurantId} user={user} />;
+  return <AdminShell key={restaurantId} isPlatformAdmin={isPlatformAdmin} />;
 }
 
 /** The platform screen renders without the tenant sidebar, since none is selected. */
@@ -44,7 +44,7 @@ function PlatformShell() {
   );
 }
 
-function AdminShell() {
+function AdminShell({ isPlatformAdmin }) {
   const [lastSeenIds, setLastSeenIds] = useState(null);
 
   // The live count is lifted here so the sidebar badge stays accurate on every page.
@@ -69,7 +69,7 @@ function AdminShell() {
         <Route path="/coupons"   element={<Coupons />} />
         <Route path="/staff"     element={<Staff />} />
         <Route path="/settings"  element={<Settings />} />
-        <Route path="/platform"  element={<PlatformRestaurants />} />
+        {isPlatformAdmin && <Route path="/platform" element={<PlatformRestaurants />} />}
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

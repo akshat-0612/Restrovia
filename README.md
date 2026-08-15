@@ -100,6 +100,24 @@ order, edit its tables, move an item into its categories, or touch its staff.
 | `MANAGER` | Orders, menu, tables, coupons, analytics. Not staff or settings. |
 | `STAFF` | The live order board only. |
 
+### Sign-in throttling
+
+Failed sign-ins are counted per account, not per address, and successful ones are
+never counted at all. A restaurant's whole team shares one NAT'd IP — the kitchen
+tablet, the manager's phone, the owner's laptop — so an address-wide counter would
+mean one person mistyping their password locks out the room, and simply switching
+between the owner, manager and staff accounts would burn the budget for all of them.
+
+Brute-forcing a single account still trips after ten failures, without affecting any
+other account. There is deliberately no per-email limit spanning every address: that
+would let anyone lock an owner out of their own restaurant just by failing against
+their email repeatedly.
+
+Signing in always lands on the dashboard rather than wherever the previous user
+was, and `/platform` is routable only by platform admins — otherwise an owner
+signing in after a platform admin on a shared machine would land on a screen that
+could only refuse them.
+
 ---
 
 ## What the customer gets
@@ -185,8 +203,11 @@ terminal, and cancelling requires a reason.
   `JWT_SECRET`, and `CORS_ORIGINS` listing every restaurant's customer domain plus the
   admin portal. Run `npm run db:deploy -w server` on release.
 - **Rate limits** — `ORDER_RATE_LIMIT` and `TRACKING_RATE_LIMIT` are per IP over ten
-  minutes. Everyone on a restaurant's wifi shares one IP, so these are ceilings for a
-  whole room rather than one customer; raise them for a busy site.
+  minutes; `LOGIN_RATE_LIMIT` and `LOGIN_SPRAY_LIMIT` cover failed sign-ins over
+  fifteen. Everyone on a restaurant's wifi shares one IP, so the per-address ones are
+  ceilings for a whole room rather than one person; raise them for a busy site.
+- **Limiter state is in memory**, so it resets on restart and is per-instance. Running
+  more than one API instance means putting a shared store behind it.
 - **Frontends** — static builds; any static host works. The customer app needs
   `VITE_RESTAURANT_SLUG` and `VITE_API_URL`; the admin portal needs `VITE_API_URL` and
   `VITE_CUSTOMER_URL` (used to build table QR codes).
