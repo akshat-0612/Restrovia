@@ -1,6 +1,9 @@
+import { ORDER_STATUS } from '@shared';
+
 export default function Header({
   restaurant, categories, activeCategory, onCategoryChange,
   search, onSearchChange, cartCount, onOpenCart, tableLabel,
+  activeOrder, onTrackOrder,
 }) {
   return (
     <header className="header">
@@ -26,6 +29,17 @@ export default function Header({
           </button>
         </div>
       </div>
+
+      {activeOrder && (
+        <button className="order-strip" onClick={onTrackOrder}>
+          <span className="order-strip-icon">{ORDER_STATUS[activeOrder.status].icon}</span>
+          <span className="order-strip-text">
+            <strong>Order #{activeOrder.orderNumber}</strong>
+            <span>{ORDER_STATUS[activeOrder.status].customerLabel}</span>
+          </span>
+          <span className="order-strip-cta">Track →</span>
+        </button>
+      )}
 
       {!restaurant.isAcceptingOrders && (
         <div className="closed-banner">🔒 {restaurant.closedMessage}</div>

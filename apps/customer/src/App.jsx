@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { api } from './lib/api';
 import { useCart } from './hooks/useCart';
+import { useActiveOrder } from './hooks/useActiveOrder';
 import { useRestaurant, flattenMenu } from './hooks/useRestaurant';
 import { cartKeyFor, formatCurrency } from '@shared';
 
@@ -33,9 +34,11 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [detailItem, setDetailItem] = useState(null);
-  const [view, setView] = useState('menu');       // menu | cart | checkout
-  const [placedOrder, setPlacedOrder] = useState(null);
+  const [view, setView] = useState('menu');       // menu | cart | checkout | tracking
   const [toast, setToast] = useState(null);
+
+  // Survives reloads, so closing the tab doesn't lose the customer their order.
+  const activeOrder = useActiveOrder();
 
   const [tables, setTables] = useState([]);
   const [presetTable, setPresetTable] = useState(null);
@@ -92,6 +95,14 @@ export default function App() {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // A customer coming back to a still-cooking order lands on the tracker, not the menu.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !activeOrder.order) return;
+    restored.current = true;
+    if (activeOrder.isActive) setView('tracking');
+  }, [activeOrder.order, activeOrder.isActive]);
+
   /* ── Cart actions ── */
   const handleAdd = useCallback((item, variant) => {
     cart.add(item, variant);
@@ -138,8 +149,8 @@ export default function App() {
       cart.clear();
       setCouponCode(null);
       setQuote(null);
-      setView('menu');
-      setPlacedOrder(order);
+      activeOrder.remember(order);
+      setView('tracking');
     } catch (err) {
       setSubmitError(err.message);
     } finally {
@@ -168,12 +179,16 @@ export default function App() {
     );
   }
 
-  if (placedOrder) {
+  if (view === 'tracking' && activeOrder.order) {
     return (
       <OrderTracker
-        order={placedOrder}
+        order={activeOrder.order}
         restaurant={restaurant}
-        onDone={() => setPlacedOrder(null)}
+        onDone={() => {
+          // A finished order has nothing left to track — stop offering it.
+          if (!activeOrder.isActive) activeOrder.forget();
+          setView('menu');
+        }}
       />
     );
   }
@@ -192,6 +207,8 @@ export default function App() {
         cartCount={cart.totals.count}
         onOpenCart={() => setView('cart')}
         tableLabel={presetTable?.label}
+        activeOrder={activeOrder.order}
+        onTrackOrder={() => setView('tracking')}
       />
 
       <main className="main-content">

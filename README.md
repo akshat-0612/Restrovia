@@ -102,6 +102,22 @@ order, edit its tables, move an item into its categories, or touch its staff.
 
 ---
 
+## What the customer gets
+
+- **Menu** — categories, search, sizes, veg marker, spice level and prep time, all
+  driven by the restaurant's own data.
+- **Cart** — persisted locally, re-priced by the server on every change, and pruned
+  automatically if an item sells out while it's sitting there.
+- **Checkout** — name, table and an optional phone number and note. No account, no
+  payment. Scanning the table's QR code fills the table in for them.
+- **Live tracking** — a status timeline that updates itself as the kitchen moves the
+  order.
+
+Tracking survives a reload. The order reference is kept on the device, so a customer
+who locks their phone or closes the tab comes back to their order rather than losing
+it, and a banner on the menu offers a way back while it's still cooking. Once the
+order is served and dismissed, the reference is cleared.
+
 ## What the admin portal gives the owner
 
 - **Dashboard** — today's revenue, orders and average order value with a day-over-day

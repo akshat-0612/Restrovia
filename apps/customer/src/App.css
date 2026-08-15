@@ -632,3 +632,21 @@
   .main-content { padding: 1rem 0.75rem 2rem; }
   .header-brand-text h1 { font-size: 0.95rem; }
 }
+
+/* ── Standing link back to a live order, so it survives browsing and reloads ── */
+.order-strip {
+  display: flex; align-items: center; gap: 0.65rem; width: 100%;
+  padding: 0.6rem 1rem; text-align: left;
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
+  border-top: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.order-strip:hover { background: color-mix(in srgb, var(--brand) 20%, var(--surface)); }
+.order-strip-icon { font-size: 1.1rem; flex-shrink: 0; }
+.order-strip-text { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.order-strip-text strong { font-size: 0.82rem; }
+.order-strip-text span { font-size: 0.72rem; color: var(--text-muted); }
+.order-strip-cta {
+  margin-left: auto; font-size: 0.78rem; font-weight: 600;
+  color: var(--brand); white-space: nowrap;
+}

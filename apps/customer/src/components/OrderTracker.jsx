@@ -1,33 +1,13 @@
-import { useEffect, useState } from 'react';
 import { CUSTOMER_JOURNEY, ORDER_STATUS, formatCurrency, formatTime, minutesSince } from '@shared';
-import { api } from '../lib/api';
 
 /**
- * Confirmation + live tracking in one screen. Polls while the order is active
- * and stops the moment it is served or cancelled.
+ * Confirmation and live tracking in one screen. Purely presentational — the
+ * order is polled by useActiveOrder, so it keeps updating even when the customer
+ * flips back to the menu.
  */
-export default function OrderTracker({ order: initialOrder, restaurant, onDone }) {
-  const [order, setOrder] = useState(initialOrder);
+export default function OrderTracker({ order, restaurant, onDone }) {
   const symbol = restaurant.currencySymbol;
-
   const isActive = !['COMPLETED', 'CANCELLED'].includes(order.status);
-
-  useEffect(() => {
-    if (!isActive) return undefined;
-
-    const token = order.customerPhone || order.customerName;
-    const id = setInterval(async () => {
-      try {
-        const { order: fresh } = await api.trackOrder(order.orderNumber, token);
-        setOrder(fresh);
-      } catch {
-        // A transient network blip shouldn't blank the screen — keep the last
-        // known state and try again on the next tick.
-      }
-    }, 12000);
-
-    return () => clearInterval(id);
-  }, [isActive, order.orderNumber, order.customerPhone, order.customerName]);
 
   const currentIndex = CUSTOMER_JOURNEY.indexOf(order.status);
   const cancelled = order.status === 'CANCELLED';

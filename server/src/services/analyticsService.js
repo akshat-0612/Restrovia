@@ -2,12 +2,10 @@ import { prisma } from '../lib/prisma.js';
 import { round2 } from '../lib/money.js';
 import { resolveRange } from '../lib/time.js';
 
-/**
- * Revenue counts every order that was not cancelled — money the restaurant will
- * collect, including orders still cooking. Cancelled orders are reported
- * separately rather than silently dropped.
- */
-const EARNING_STATUSES = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED'];
+// Revenue counts every order that was not cancelled — money the restaurant will
+// collect, including orders still cooking. Cancelled orders are reported
+// separately rather than silently dropped. Every query below spells this as
+// `status <> 'CANCELLED'`.
 
 const num = (v) => (v == null ? 0 : Number(v));
 
@@ -372,5 +370,3 @@ export async function getQuickStats(restaurant) {
     liveOrders: liveCount,
   };
 }
-
-export { EARNING_STATUSES };

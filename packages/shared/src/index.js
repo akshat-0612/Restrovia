@@ -15,8 +15,6 @@ export const ORDER_STATUS = {
 /** The order a customer's status tracker walks through. */
 export const CUSTOMER_JOURNEY = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED'];
 
-export const LIVE_STATUSES = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY'];
-
 export const ROLE_LABELS = {
   PLATFORM_ADMIN: 'Platform Admin',
   OWNER: 'Owner',
@@ -90,10 +88,4 @@ export function formatHour(hour) {
 /** Stable key for a cart line: the same item in two sizes is two lines. */
 export function cartKeyFor(itemId, variantLabel) {
   return variantLabel ? `${itemId}::${variantLabel}` : String(itemId);
-}
-
-/** Lowest advertised price for an item, used on menu cards ("from ₹80"). */
-export function displayPrice(item) {
-  if (item.variants?.length) return Math.min(...item.variants.map((v) => Number(v.price)));
-  return Number(item.basePrice ?? 0);
 }
