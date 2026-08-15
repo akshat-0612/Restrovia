@@ -50,6 +50,8 @@ export const api = {
   placeOrder: (payload)          => request('/orders', { method: 'POST', body: payload }),
   trackOrder: (orderNumber, token) =>
     request(`/orders/${orderNumber}?token=${encodeURIComponent(token)}`),
+  /** Batch tracking: one request no matter how many orders the device holds. */
+  lookupOrders: (refs, signal) => request('/orders/lookup', { method: 'POST', body: { refs }, signal }),
 };
 
 export { ApiError };

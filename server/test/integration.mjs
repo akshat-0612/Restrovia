@@ -159,6 +159,46 @@ ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
 ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
   body: { cart: [{ menuItemId: item.id, quantity: 1 }], couponCode: 'FEAST15' } })).status === 400, 'coupon below its minimum rejected');
 
+console.log('\n── BATCH ORDER LOOKUP ──');
+const tbl2 = (await call('/public/tables?restaurant=delight-food')).json.tables[1];
+const mk = async (name, phone) => (await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 1 }], customerName: name, customerPhone: phone, tableId: tbl2.id } })).json.order;
+const oA = await mk('Lookup A', '9111100001');
+const oB = await mk('Lookup B', '9111100002');
+
+const both = await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: [{ orderNumber: oA.orderNumber, token: '9111100001' }, { orderNumber: oB.orderNumber, token: '9111100002' }] } });
+ok(both.status === 200 && both.json.orders.length === 2, 'two correctly-proved orders are returned');
+ok(both.json.orders.every((o) => o.items.length > 0), 'lookup includes line items');
+
+// The security property: one order's token must not unlock another's.
+const mixed = await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: [{ orderNumber: oA.orderNumber, token: '9111100001' }, { orderNumber: oB.orderNumber, token: '9111100001' }] } });
+ok(mixed.json.orders.length === 1 && mixed.json.orders[0].orderNumber === oA.orderNumber,
+  "a valid token for one order does not reveal another");
+
+const guessed = await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: [{ orderNumber: oA.orderNumber, token: 'not-the-token' }] } });
+ok(guessed.status === 200 && guessed.json.orders.length === 0, 'a wrong token yields nothing, not an error');
+
+// Cross-tenant: another restaurant's order number must not resolve here.
+const rivalOrder = (await call('/admin/orders?pageSize=1', { token: rival })).json.orders[0];
+const leaked = await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: [{ orderNumber: rivalOrder.orderNumber, token: rivalOrder.customerName }] } });
+ok(!leaked.json.orders.some((o) => o.customerName === rivalOrder.customerName && o.orderNumber === rivalOrder.orderNumber
+    && Number(o.totalAmount) === Number(rivalOrder.totalAmount)),
+  "another restaurant's order is not reachable through this slug");
+
+ok((await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: [] } })).status === 400, 'empty ref list rejected');
+ok((await call('/public/orders/lookup?restaurant=delight-food', { method: 'POST',
+  body: { refs: Array.from({ length: 21 }, (_, i) => ({ orderNumber: i + 1, token: 'x' })) } })).status === 400,
+  'more than 20 refs rejected');
+
+for (const o of [oA, oB]) {
+  await call(`/admin/orders/${o.id}/status`, { token: owner, method: 'PATCH', body: { status: 'CANCELLED', note: 'test cleanup' } });
+}
+
 console.log('\n── VALIDATION ──');
 ok((await call('/public/orders?restaurant=delight-food', { method: 'POST',
   body: { cart: [{ menuItemId: item.id, quantity: 1 }], customerName: 'A', tableId: tbl.id } })).status === 400, 'short name rejected');

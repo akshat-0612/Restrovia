@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { api } from './lib/api';
 import { useCart } from './hooks/useCart';
-import { useActiveOrder } from './hooks/useActiveOrder';
+import { useMyOrders } from './hooks/useMyOrders';
 import { useRestaurant, flattenMenu } from './hooks/useRestaurant';
 import { cartKeyFor, formatCurrency } from '@shared';
 
@@ -12,6 +12,7 @@ import ItemDetailSheet from './components/ItemDetailSheet';
 import CartSidebar from './components/CartSidebar';
 import CheckoutSheet from './components/CheckoutSheet';
 import OrderTracker from './components/OrderTracker';
+import MyOrders from './components/MyOrders';
 
 /** Applies the restaurant's brand colours as CSS variables at the document root. */
 function useBrandTheme(restaurant) {
@@ -34,11 +35,12 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [detailItem, setDetailItem] = useState(null);
-  const [view, setView] = useState('menu');       // menu | cart | checkout | tracking
+  const [view, setView] = useState('menu');    // menu | cart | checkout | orders | tracking
   const [toast, setToast] = useState(null);
+  const [trackingNumber, setTrackingNumber] = useState(null);
 
-  // Survives reloads, so closing the tab doesn't lose the customer their order.
-  const activeOrder = useActiveOrder();
+  // Every order this device has placed, surviving reloads.
+  const myOrders = useMyOrders();
 
   const [tables, setTables] = useState([]);
   const [presetTable, setPresetTable] = useState(null);
@@ -95,13 +97,16 @@ export default function App() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  // A customer coming back to a still-cooking order lands on the tracker, not the menu.
+  // Coming back to still-cooking orders lands the customer on them, not the menu:
+  // straight to the tracker for one, or the list when several are in flight.
   const restored = useRef(false);
   useEffect(() => {
-    if (restored.current || !activeOrder.order) return;
+    if (restored.current || myOrders.restoring || myOrders.orders.length === 0) return;
     restored.current = true;
-    if (activeOrder.isActive) setView('tracking');
-  }, [activeOrder.order, activeOrder.isActive]);
+    const live = myOrders.activeOrders;
+    if (live.length === 1) { setTrackingNumber(live[0].orderNumber); setView('tracking'); }
+    else if (live.length > 1) setView('orders');
+  }, [myOrders.restoring, myOrders.orders, myOrders.activeOrders]);
 
   /* ── Cart actions ── */
   const handleAdd = useCallback((item, variant) => {
@@ -149,7 +154,8 @@ export default function App() {
       cart.clear();
       setCouponCode(null);
       setQuote(null);
-      activeOrder.remember(order);
+      myOrders.remember(order);
+      setTrackingNumber(order.orderNumber);
       setView('tracking');
     } catch (err) {
       setSubmitError(err.message);
@@ -179,16 +185,28 @@ export default function App() {
     );
   }
 
-  if (view === 'tracking' && activeOrder.order) {
+  const trackedOrder = myOrders.orders.find((o) => o.orderNumber === trackingNumber);
+
+  if (view === 'tracking' && trackedOrder) {
     return (
       <OrderTracker
-        order={activeOrder.order}
+        order={trackedOrder}
         restaurant={restaurant}
-        onDone={() => {
-          // A finished order has nothing left to track — stop offering it.
-          if (!activeOrder.isActive) activeOrder.forget();
-          setView('menu');
-        }}
+        // Only offer "back to orders" when there is more than one to go back to.
+        onBack={myOrders.orders.length > 1 ? () => setView('orders') : null}
+        onDone={() => setView(myOrders.orders.length > 1 ? 'orders' : 'menu')}
+      />
+    );
+  }
+
+  if (view === 'orders') {
+    return (
+      <MyOrders
+        orders={myOrders.orders}
+        restaurant={restaurant}
+        onOpen={(order) => { setTrackingNumber(order.orderNumber); setView('tracking'); }}
+        onBack={() => setView('menu')}
+        onClearFinished={myOrders.clearFinished}
       />
     );
   }
@@ -207,8 +225,15 @@ export default function App() {
         cartCount={cart.totals.count}
         onOpenCart={() => setView('cart')}
         tableLabel={presetTable?.label}
-        activeOrder={activeOrder.order}
-        onTrackOrder={() => setView('tracking')}
+        myOrders={myOrders.orders}
+        activeOrders={myOrders.activeOrders}
+        onViewOrders={() => {
+          // One order goes straight to its tracker; several need the list.
+          const live = myOrders.activeOrders;
+          const target = live.length === 1 ? live[0] : null;
+          if (target) { setTrackingNumber(target.orderNumber); setView('tracking'); }
+          else setView('orders');
+        }}
       />
 
       <main className="main-content">

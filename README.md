@@ -113,10 +113,16 @@ order, edit its tables, move an item into its categories, or touch its staff.
 - **Live tracking** — a status timeline that updates itself as the kitchen moves the
   order.
 
-Tracking survives a reload. The order reference is kept on the device, so a customer
-who locks their phone or closes the tab comes back to their order rather than losing
-it, and a banner on the menu offers a way back while it's still cooking. Once the
-order is served and dismissed, the reference is cleared.
+- **Your orders** — every order placed on that device, not just the latest. Ordering
+  food and then dessert leaves two live orders, and both stay reachable.
+
+Tracking survives a reload. Each order's reference is kept on the device, so a
+customer who locks their phone or closes the tab comes back to their orders rather
+than losing them. A banner on the menu shows the live one's status, or a count when
+several are cooking. Finished orders drop into an "Earlier" group and can be cleared.
+
+The server proves each order independently: holding the token for one order reveals
+nothing about any other, so bundling guesses into a lookup buys nothing.
 
 ## What the admin portal gives the owner
 
@@ -178,6 +184,9 @@ terminal, and cancelling requires a reason.
 - **API** — any Node host (Railway, Render, Fly). Set `DATABASE_URL`, a long random
   `JWT_SECRET`, and `CORS_ORIGINS` listing every restaurant's customer domain plus the
   admin portal. Run `npm run db:deploy -w server` on release.
+- **Rate limits** — `ORDER_RATE_LIMIT` and `TRACKING_RATE_LIMIT` are per IP over ten
+  minutes. Everyone on a restaurant's wifi shares one IP, so these are ceilings for a
+  whole room rather than one customer; raise them for a busy site.
 - **Frontends** — static builds; any static host works. The customer app needs
   `VITE_RESTAURANT_SLUG` and `VITE_API_URL`; the admin portal needs `VITE_API_URL` and
   `VITE_CUSTOMER_URL` (used to build table QR codes).

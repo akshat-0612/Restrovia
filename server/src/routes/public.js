@@ -8,13 +8,28 @@ import { createOrder, quoteOrder, ORDER_INCLUDE } from '../services/orderService
 
 const router = Router();
 
-/** Unauthenticated write endpoint — throttled per IP so a bot can't flood the kitchen. */
+/**
+ * Unauthenticated write endpoint — throttled per IP so a bot can't flood the kitchen.
+ *
+ * Every customer on the restaurant's wifi shares one NAT'd IP, so this ceiling is
+ * for a whole room, not one person. It is env-tunable because a busy kitchen will
+ * legitimately exceed a conservative default.
+ */
 const orderLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 20,
+  max: Number(process.env.ORDER_RATE_LIMIT || 60),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many orders from this device. Please wait a few minutes.' },
+  message: { error: 'Too many orders from this network right now. Please wait a moment and try again.' },
+});
+
+/** Order tracking is a read and gets polled, so it needs far more headroom. */
+const trackingLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: Number(process.env.TRACKING_RATE_LIMIT || 600),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a moment.' },
 });
 
 const cartSchema = z.array(
@@ -118,10 +133,47 @@ router.post('/orders', orderLimiter, resolvePublicTenant, asyncHandler(async (re
 }));
 
 /**
+ * Batch tracking for every order a device has placed.
+ *
+ * Each reference is proved on its own: holding the token for order #12 reveals
+ * nothing about #13, so a caller cannot widen their view by bundling guesses.
+ * Unmatched references are simply omitted rather than reported, which keeps this
+ * from doubling as an oracle for which order numbers exist.
+ */
+router.post('/orders/lookup', trackingLimiter, resolvePublicTenant, asyncHandler(async (req, res) => {
+  const { refs } = z.object({
+    refs: z.array(z.object({
+      orderNumber: z.number().int().positive(),
+      token: z.string().trim().min(1).max(60),
+    })).min(1).max(20),
+  }).parse(req.body);
+
+  const orders = await prisma.order.findMany({
+    where: {
+      restaurantId: req.restaurantId,
+      orderNumber: { in: refs.map((r) => r.orderNumber) },
+    },
+    include: ORDER_INCLUDE,
+    orderBy: { placedAt: 'desc' },
+  });
+
+  const proofFor = new Map(refs.map((r) => [r.orderNumber, r.token.toLowerCase()]));
+  const visible = orders.filter((order) => {
+    const proof = proofFor.get(order.orderNumber);
+    return Boolean(proof) && (
+      proof === (order.customerPhone || '').toLowerCase() ||
+      proof === order.customerName.toLowerCase()
+    );
+  });
+
+  res.json({ orders: serialize(visible) });
+}));
+
+/**
  * Order tracking. Requires the order number *and* the phone/name it was placed
  * with, so a customer cannot walk the sequence and read other people's orders.
  */
-router.get('/orders/:orderNumber', resolvePublicTenant, asyncHandler(async (req, res) => {
+router.get('/orders/:orderNumber', trackingLimiter, resolvePublicTenant, asyncHandler(async (req, res) => {
   const orderNumber = Number(req.params.orderNumber);
   if (!Number.isInteger(orderNumber)) throw ApiError.badRequest('Invalid order number');
 

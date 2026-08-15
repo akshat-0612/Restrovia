@@ -3,8 +3,11 @@ import { ORDER_STATUS } from '@shared';
 export default function Header({
   restaurant, categories, activeCategory, onCategoryChange,
   search, onSearchChange, cartCount, onOpenCart, tableLabel,
-  activeOrder, onTrackOrder,
+  myOrders = [], activeOrders = [], onViewOrders,
 }) {
+  const live = activeOrders.length;
+  // One live order shows its own status; several collapse to a count.
+  const solo = live === 1 ? activeOrders[0] : null;
   return (
     <header className="header">
       <div className="header-top">
@@ -30,14 +33,24 @@ export default function Header({
         </div>
       </div>
 
-      {activeOrder && (
-        <button className="order-strip" onClick={onTrackOrder}>
-          <span className="order-strip-icon">{ORDER_STATUS[activeOrder.status].icon}</span>
-          <span className="order-strip-text">
-            <strong>Order #{activeOrder.orderNumber}</strong>
-            <span>{ORDER_STATUS[activeOrder.status].customerLabel}</span>
+      {myOrders.length > 0 && (
+        <button className={`order-strip ${live === 0 ? 'quiet' : ''}`} onClick={onViewOrders}>
+          <span className="order-strip-icon">
+            {solo ? ORDER_STATUS[solo.status].icon : live > 1 ? '🍽️' : '🧾'}
           </span>
-          <span className="order-strip-cta">Track →</span>
+          <span className="order-strip-text">
+            <strong>
+              {solo ? `Order #${solo.orderNumber}` : live > 1 ? `${live} orders in progress` : 'Your orders'}
+            </strong>
+            <span>
+              {solo
+                ? ORDER_STATUS[solo.status].customerLabel
+                : live > 1
+                  ? 'Tap to see each one'
+                  : `${myOrders.length} past order${myOrders.length === 1 ? '' : 's'}`}
+            </span>
+          </span>
+          <span className="order-strip-cta">{solo ? 'Track' : 'View'} →</span>
         </button>
       )}
 

@@ -5,7 +5,7 @@ import { CUSTOMER_JOURNEY, ORDER_STATUS, formatCurrency, formatTime, minutesSinc
  * order is polled by useActiveOrder, so it keeps updating even when the customer
  * flips back to the menu.
  */
-export default function OrderTracker({ order, restaurant, onDone }) {
+export default function OrderTracker({ order, restaurant, onDone, onBack }) {
   const symbol = restaurant.currencySymbol;
   const isActive = !['COMPLETED', 'CANCELLED'].includes(order.status);
 
@@ -17,6 +17,9 @@ export default function OrderTracker({ order, restaurant, onDone }) {
   return (
     <div className="tracker-screen">
       <div className="tracker-card">
+        {onBack && (
+          <button className="tracker-back" onClick={onBack}>← All your orders</button>
+        )}
         <div className={`tracker-hero ${cancelled ? 'cancelled' : ''}`}>
           <div className="tracker-hero-icon">{cancelled ? '✖️' : order.status === 'READY' ? '🔔' : '✅'}</div>
           <h1>
@@ -99,7 +102,7 @@ export default function OrderTracker({ order, restaurant, onDone }) {
         )}
 
         <button className="btn-continue" onClick={onDone}>
-          {isActive ? 'Order something else' : 'Back to menu'}
+          {isActive ? 'Order something else' : 'Done'}
         </button>
       </div>
     </div>
