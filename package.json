@@ -1,26 +1,33 @@
 {
-  "name": "deshmukh_cafe",
+  "name": "delightful",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Delightful — multi-tenant restaurant ordering platform (customer web app + owner admin portal)",
+  "workspaces": [
+    "packages/*",
+    "server",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "dev": "npm-run-all --parallel dev:server dev:customer dev:admin",
+    "dev:server": "npm run dev -w server",
+    "dev:customer": "npm run dev -w @delightful/customer",
+    "dev:admin": "npm run dev -w @delightful/admin",
+    "build": "npm run build -w @delightful/customer && npm run build -w @delightful/admin",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:push": "npm run db:push -w server",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:seed": "npm run db:seed -w server",
+    "db:studio": "npm run db:studio -w server",
+    "db:reset": "npm run db:reset -w server",
+    "setup": "npm install && npm run db:up && sleep 4 && npm run db:migrate && npm run db:seed"
   },
   "devDependencies": {
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7",
-    "@vitejs/plugin-react": "^4.0.3",
-    "eslint": "^8.45.0",
-    "eslint-plugin-react": "^7.32.2",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.3",
-    "vite": "^4.4.5"
+    "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=18.18"
   }
 }

@@ -1,0 +1,53 @@
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* Overridden at runtime from the restaurant record — these are the fallbacks. */
+  --brand: #e8552d;
+  --accent: #f5b301;
+
+  --bg:        #101012;
+  --surface:   #18181b;
+  --surface-2: #1f1f23;
+  --surface-3: #27272c;
+  --border:    #2c2c32;
+  --border-strong: #3a3a42;
+
+  --text:       #ececef;
+  --text-muted: #9a9aa4;
+  --text-dim:   #6b6b74;
+
+  --green: #3ecf8e;
+  --red:   #f2555a;
+  --amber: #f5b301;
+
+  --radius:    14px;
+  --radius-sm: 10px;
+  --shadow:    0 10px 30px rgba(0, 0, 0, 0.45);
+
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { min-height: 100vh; background-color: var(--bg); }
+#root { min-height: 100vh; }
+
+button { cursor: pointer; font-family: inherit; color: inherit; border: none; background: none; }
+button:disabled { cursor: not-allowed; }
+input, select, textarea { font-family: inherit; font-size: 1rem; }
+a { color: var(--brand); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

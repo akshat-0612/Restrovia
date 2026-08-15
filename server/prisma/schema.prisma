@@ -1,0 +1,341 @@
+// Delightful — multi-tenant restaurant ordering platform
+// One database, many restaurants. Every tenant-owned row carries restaurantId,
+// and every query path is scoped by it in middleware (see src/middleware/tenant.js).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Tenancy ─────────────────────────────
+
+/// The tenant root. One row per restaurant sold. Everything else hangs off this.
+model Restaurant {
+  id        String @id @default(cuid())
+  /// URL-safe identifier the customer app is deployed with, e.g. "delight-food".
+  slug      String @unique
+  name      String
+  tagline   String?
+
+  // Branding — each deployed customer app pulls this at boot, so a new client
+  // is a config change rather than a code change.
+  logoEmoji    String  @default("🍽️")
+  logoUrl      String?
+  primaryColor String  @default("#e8552d")
+  accentColor  String  @default("#f5b301")
+
+  // Contact / legal
+  phone      String?
+  email      String?
+  address    String?
+  city       String?
+  gstNumber  String?
+
+  // Commercials
+  currency            String  @default("INR")
+  currencySymbol      String  @default("₹")
+  timezone            String  @default("Asia/Kolkata")
+  taxPercent          Decimal @default(5) @db.Decimal(5, 2)
+  taxLabel            String  @default("GST")
+  taxInclusive        Boolean @default(false)
+  serviceChargePct    Decimal @default(0) @db.Decimal(5, 2)
+  minOrderAmount      Decimal @default(0) @db.Decimal(10, 2)
+  avgPrepTimeMins     Int     @default(15)
+
+  // Operations
+  isActive          Boolean @default(true)
+  isAcceptingOrders Boolean @default(true)
+  /// Shown to customers when isAcceptingOrders is false.
+  closedMessage     String  @default("We're not taking orders right now. Please check back soon!")
+  openingTime       String  @default("09:00")
+  closingTime       String  @default("23:00")
+
+  // Billing (platform-side)
+  plan        RestaurantPlan @default(STARTER)
+  planNotes   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  categories Category[]
+  menuItems  MenuItem[]
+  tables     RestaurantTable[]
+  orders     Order[]
+  coupons    Coupon[]
+
+  @@index([isActive])
+  @@map("restaurants")
+}
+
+enum RestaurantPlan {
+  STARTER
+  GROWTH
+  PRO
+}
+
+// ───────────────────────────── Users & auth ─────────────────────────────
+
+model User {
+  id           String  @id @default(cuid())
+  /// Null only for PLATFORM_ADMIN — the vendor account that sits above all tenants.
+  restaurantId String?
+  email        String
+  passwordHash String
+  name         String
+  phone        String?
+  role         UserRole @default(STAFF)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  restaurant  Restaurant?  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderEvents OrderEvent[]
+
+  /// Emails are unique per tenant, so the same person can hold accounts at two restaurants.
+  @@unique([restaurantId, email])
+  @@index([restaurantId, role])
+  @@map("users")
+}
+
+enum UserRole {
+  /// You, the vendor. Sees every restaurant, onboards new ones.
+  PLATFORM_ADMIN
+  /// Restaurant owner — full access within their own restaurant.
+  OWNER
+  /// Can run the floor and edit the menu, but not billing/staff.
+  MANAGER
+  /// Order board only.
+  STAFF
+}
+
+// ───────────────────────────── Menu ─────────────────────────────
+
+model Category {
+  id           String @id @default(cuid())
+  restaurantId String
+  name         String
+  icon         String @default("🍴")
+  sortOrder    Int    @default(0)
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItems  MenuItem[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId, sortOrder])
+  @@map("categories")
+}
+
+model MenuItem {
+  id           String  @id @default(cuid())
+  restaurantId String
+  categoryId   String
+  name         String
+  description  String?
+  imageUrl     String?
+  /// Used when the item has no variants. Null for variant-priced items.
+  basePrice    Decimal? @db.Decimal(10, 2)
+
+  isVeg        Boolean @default(true)
+  isAvailable  Boolean @default(true)
+  isFeatured   Boolean @default(false)
+  spiceLevel   Int     @default(0) // 0 none · 1 mild · 2 medium · 3 hot
+  prepTimeMins Int     @default(10)
+  sortOrder    Int     @default(0)
+
+  /// Lifetime counters, incremented at order time so listing pages don't aggregate.
+  timesOrdered Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  restaurant Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category   Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants   MenuVariant[]
+  orderItems OrderItem[]
+
+  @@index([restaurantId, categoryId])
+  @@index([restaurantId, isAvailable])
+  @@map("menu_items")
+}
+
+model MenuVariant {
+  id         String  @id @default(cuid())
+  menuItemId String
+  label      String  // "Half", "Full", "Large"
+  price      Decimal @db.Decimal(10, 2)
+  sortOrder  Int     @default(0)
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, label])
+  @@map("menu_variants")
+}
+
+// ───────────────────────────── Tables (dine-in) ─────────────────────────────
+
+model RestaurantTable {
+  id           String  @id @default(cuid())
+  restaurantId String
+  label        String  // "T1", "Terrace 3"
+  seats        Int     @default(4)
+  /// Random token embedded in the table QR code, so a scan pre-fills the table.
+  qrToken      String  @unique @default(cuid())
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@unique([restaurantId, label])
+  @@map("restaurant_tables")
+}
+
+// ───────────────────────────── Orders ─────────────────────────────
+
+model Order {
+  id           String @id @default(cuid())
+  restaurantId String
+  /// Per-restaurant sequential number shown to customers and the kitchen.
+  /// Monotonic and never reused, so it stays a stable receipt reference.
+  orderNumber  Int
+
+  tableId    String?
+  /// Snapshot so history survives a table being renamed or deleted.
+  tableLabel String?
+
+  customerName  String
+  customerPhone String?
+  notes         String?
+
+  status OrderStatus @default(PLACED)
+
+  // Money — all snapshotted at order time; menu price changes never rewrite history.
+  subtotal       Decimal @db.Decimal(10, 2)
+  taxPercent     Decimal @db.Decimal(5, 2)
+  taxAmount      Decimal @db.Decimal(10, 2)
+  discountAmount Decimal @default(0) @db.Decimal(10, 2)
+  couponCode     String?
+  totalAmount    Decimal @db.Decimal(10, 2)
+  itemCount      Int
+
+  /// Cash on collection — no online payment in this build, but the kitchen
+  /// still needs to mark a bill settled.
+  isPaid   Boolean     @default(false)
+  paidAt   DateTime?
+  payMethod PaymentMethod @default(CASH)
+
+  placedAt     DateTime  @default(now())
+  acceptedAt   DateTime?
+  readyAt      DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  restaurant Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  table      RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  items      OrderItem[]
+  events     OrderEvent[]
+
+  @@unique([restaurantId, orderNumber])
+  @@index([restaurantId, status])
+  @@index([restaurantId, placedAt])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  /// Nullable: an item deleted from the menu must not erase past orders.
+  menuItemId String?
+
+  // Snapshots — what the customer actually bought, at the price they saw.
+  nameSnapshot     String
+  categorySnapshot String
+  variantLabel     String?
+  unitPrice        Decimal @db.Decimal(10, 2)
+  quantity         Int
+  lineTotal        Decimal @db.Decimal(10, 2)
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@map("order_items")
+}
+
+/// Append-only audit trail: who moved the order, when, and from what.
+model OrderEvent {
+  id         String       @id @default(cuid())
+  orderId    String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  byUserId   String?
+  byName     String       @default("Customer")
+  note       String?
+  createdAt  DateTime     @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  byUser User? @relation(fields: [byUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_events")
+}
+
+// ───────────────────────────── Promotions ─────────────────────────────
+
+model Coupon {
+  id           String @id @default(cuid())
+  restaurantId String
+  code         String
+  description  String?
+  discountType DiscountType @default(PERCENT)
+  /// Percent (0-100) or flat currency amount, per discountType.
+  value        Decimal @db.Decimal(10, 2)
+  minOrderAmount Decimal @default(0) @db.Decimal(10, 2)
+  maxDiscount    Decimal? @db.Decimal(10, 2)
+  usageLimit     Int?
+  timesUsed      Int     @default(0)
+  validFrom      DateTime @default(now())
+  validUntil     DateTime?
+  isActive       Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, code])
+  @@map("coupons")
+}
+
+enum DiscountType {
+  PERCENT
+  FLAT
+}

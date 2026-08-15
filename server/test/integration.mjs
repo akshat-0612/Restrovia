@@ -1,0 +1,203 @@
+/**
+ * End-to-end API checks against a running server with seeded data.
+ *
+ *   npm run db:seed -w server     # reset to known data
+ *   npm run dev:server            # in another shell
+ *   npm run test:api -w server
+ *
+ * Covers the things that matter most for a multi-tenant product: role gates,
+ * cross-tenant isolation, order-state legality, and server-side pricing.
+ *
+ * Note: sign-in is rate limited to 20 attempts per IP per 15 minutes. Running
+ * this suite several times in a row will trip that — restart the API to clear it.
+ */
+const API = process.env.API_URL || 'http://localhost:4000/api';
+
+let pass = 0, fail = 0;
+const ok = (c, m) => { c ? (pass++, console.log(`  ✓ ${m}`)) : (fail++, console.log(`  ✗ ${m}`)); };
+
+async function call(path, { method = 'GET', body, token, restaurantId } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (restaurantId) headers['X-Restaurant-Id'] = restaurantId;
+  const r = await fetch(`${API}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await r.text();
+  let json; try { json = JSON.parse(text); } catch { json = { raw: text.slice(0, 120) }; }
+  return { status: r.status, json };
+}
+const login = async (email, password) => (await call('/auth/login', { method: 'POST', body: { email, password } })).json.token;
+
+console.log('\n── AUTH & RBAC ──');
+const owner    = await login('owner@delightfood.in', 'owner123');
+const manager  = await login('manager@delightfood.in', 'manager123');
+const staff    = await login('staff@delightfood.in', 'staff123');
+const platform = await login('platform@delightful.app', 'platform123');
+const rival    = await login('owner@urbanslice.in', 'owner123');
+ok(owner && manager && staff && platform && rival, 'all five roles can sign in');
+
+ok((await call('/auth/login', { method: 'POST', body: { email: 'owner@delightfood.in', password: 'wrong' } })).status === 401, 'wrong password rejected');
+ok((await call('/admin/orders/live')).status === 401, 'no token → 401');
+ok((await call('/admin/orders/live', { token: 'garbage' })).status === 401, 'bad token → 401');
+
+ok((await call('/admin/staff', { token: staff })).status === 403, 'STAFF blocked from staff list');
+ok((await call('/admin/settings', { token: staff, method: 'PATCH', body: { name: 'Hacked' } })).status === 403, 'STAFF blocked from settings write');
+ok((await call('/admin/staff', { token: manager })).status === 403, 'MANAGER blocked from staff list');
+ok((await call('/admin/menu/items', { token: manager })).status === 200, 'MANAGER can read menu');
+ok((await call('/admin/orders/live', { token: staff })).status === 200, 'STAFF can read the live board');
+ok((await call('/platform/stats', { token: owner })).status === 403, 'OWNER blocked from platform tier');
+ok((await call('/platform/stats', { token: platform })).status === 200, 'PLATFORM_ADMIN can read platform stats');
+ok((await call('/admin/orders/live', { token: platform })).status === 400, 'PLATFORM_ADMIN must name a restaurant');
+
+console.log('\n── TENANT ISOLATION ──');
+const mine = (await call('/admin/orders?pageSize=1', { token: owner })).json;
+const theirs = (await call('/admin/orders?pageSize=1', { token: rival })).json;
+const myOrderId = mine.orders[0].id, theirOrderId = theirs.orders[0].id;
+ok(myOrderId !== theirOrderId, 'two tenants see different orders');
+ok((await call(`/admin/orders/${theirOrderId}`, { token: owner })).status === 404, "owner cannot read a rival's order by id");
+ok((await call(`/admin/orders/${theirOrderId}/status`, { token: owner, method: 'PATCH', body: { status: 'ACCEPTED' } })).status === 404, "owner cannot mutate a rival's order");
+
+const theirCats = (await call('/admin/menu/categories', { token: rival })).json.categories;
+ok((await call('/admin/menu/items', { token: owner, method: 'POST',
+  body: { name: 'Smuggled', categoryId: theirCats[0].id, basePrice: 10 } })).status === 400,
+  "owner cannot attach an item to a rival's category");
+
+const theirTables = (await call('/admin/tables', { token: rival })).json.tables;
+ok((await call(`/admin/tables/${theirTables[0].id}`, { token: owner, method: 'PATCH', body: { seats: 6 } })).status === 404,
+  "owner cannot edit a rival's table");
+
+const theirStaff = (await call('/admin/staff', { token: rival })).json.staff;
+ok((await call(`/admin/staff/${theirStaff[0].id}`, { token: owner, method: 'PATCH', body: { role: 'STAFF' } })).status === 404,
+  "owner cannot demote a rival's staff");
+
+console.log('\n── MENU CRUD ──');
+// Re-runnable: clear leftovers from an aborted previous run.
+for (const stale of (await call('/admin/menu/items?search=Test', { token: owner })).json.items ?? []) {
+  await call(`/admin/menu/items/${stale.id}`, { token: owner, method: 'DELETE' });
+}
+for (const stale of (await call('/admin/menu/items?search=Renamed', { token: owner })).json.items ?? []) {
+  await call(`/admin/menu/items/${stale.id}`, { token: owner, method: 'DELETE' });
+}
+for (const stale of (await call('/admin/menu/categories', { token: owner })).json.categories ?? []) {
+  if (stale.name === 'Test Cat') await call(`/admin/menu/categories/${stale.id}`, { token: owner, method: 'DELETE' });
+}
+const cat = (await call('/admin/menu/categories', { token: owner, method: 'POST', body: { name: 'Test Cat', icon: '🧪' } })).json.category;
+ok(!!cat?.id, 'category created');
+ok((await call('/admin/menu/categories', { token: owner, method: 'POST', body: { name: 'Test Cat' } })).status === 409, 'duplicate category name → 409');
+
+const flat = (await call('/admin/menu/items', { token: owner, method: 'POST',
+  body: { name: 'Test Flat', categoryId: cat.id, basePrice: 99, isVeg: true } })).json.item;
+ok(Number(flat.basePrice) === 99 && flat.variants.length === 0, 'flat-priced item created');
+
+const varied = (await call('/admin/menu/items', { token: owner, method: 'POST',
+  body: { name: 'Test Sized', categoryId: cat.id, variants: [{ label: 'S', price: 50 }, { label: 'L', price: 90 }] } })).json.item;
+ok(varied.basePrice === null && varied.variants.length === 2, 'variant item ignores basePrice');
+
+ok((await call('/admin/menu/items', { token: owner, method: 'POST',
+  body: { name: 'No price', categoryId: cat.id } })).status === 400, 'item with no price rejected');
+
+const upd = (await call(`/admin/menu/items/${varied.id}`, { token: owner, method: 'PATCH',
+  body: { variants: [{ label: 'Only', price: 120 }] } })).json.item;
+ok(upd.variants.length === 1 && upd.variants[0].label === 'Only', 'variants replaced on update');
+
+ok((await call(`/admin/menu/items/${flat.id}/availability`, { token: owner, method: 'PATCH', body: { isAvailable: false } })).status === 200, 'availability toggled');
+ok((await call(`/admin/menu/categories/${cat.id}`, { token: owner, method: 'DELETE' })).status === 400, 'non-empty category cannot be deleted');
+
+console.log('\n── COUPON CRUD ──');
+const code = `TEST${Date.now().toString(36).toUpperCase().slice(-6)}`;
+const coup = (await call('/admin/coupons', { token: owner, method: 'POST',
+  body: { code, discountType: 'PERCENT', value: 20, minOrderAmount: 50 } })).json.coupon;
+ok(!!coup?.id, 'coupon created');
+ok((await call('/admin/coupons', { token: owner, method: 'POST',
+  body: { code: `${code}X`, discountType: 'PERCENT', value: 150 } })).status === 400, 'percent > 100 rejected on create');
+const cUpd = await call(`/admin/coupons/${coup.id}`, { token: owner, method: 'PATCH', body: { value: 30 } });
+ok(cUpd.status === 200 && Number(cUpd.json.coupon.value) === 30, 'coupon value updated (partial body)');
+ok((await call(`/admin/coupons/${coup.id}`, { token: owner, method: 'PATCH', body: { value: 150 } })).status === 400,
+  'percent > 100 rejected on partial update');
+ok((await call(`/admin/coupons/${coup.id}`, { token: rival, method: 'PATCH', body: { value: 5 } })).status === 404,
+  "rival cannot edit another tenant's coupon");
+ok((await call(`/admin/coupons/${coup.id}`, { token: owner, method: 'DELETE' })).status === 200, 'coupon deleted');
+
+console.log('\n── ITEM UPDATE PRICING GUARD ──');
+ok((await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH',
+  body: { variants: [], basePrice: null } })).status === 400, 'update leaving an item unpriced rejected');
+const renamed = await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH', body: { name: 'Test Renamed' } });
+ok(renamed.status === 200 && renamed.json.item.name === 'Test Renamed', 'partial update of a single field works');
+
+console.log('\n── ORDER LIFECYCLE ──');
+const menu = (await call('/public/menu?restaurant=delight-food')).json;
+const item = menu.categories.flatMap((c) => c.items).find((i) => i.isAvailable && !i.variants.length);
+const tbl = (await call('/public/tables?restaurant=delight-food')).json.tables[0];
+const placed = (await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 3 }], customerName: 'Lifecycle Test', customerPhone: '9000000001', tableId: tbl.id } })).json.order;
+ok(placed.status === 'PLACED', 'order placed');
+ok(Number(placed.subtotal) === Number(item.basePrice) * 3, 'server priced the cart itself');
+
+ok((await call(`/admin/orders/${placed.id}/status`, { token: owner, method: 'PATCH', body: { status: 'READY' } })).status === 400,
+  'illegal transition PLACED→READY rejected');
+ok((await call(`/admin/orders/${placed.id}/status`, { token: owner, method: 'PATCH', body: { status: 'CANCELLED' } })).status === 400,
+  'cancel without a reason rejected');
+
+for (const s of ['ACCEPTED', 'PREPARING', 'READY', 'COMPLETED']) {
+  const r = await call(`/admin/orders/${placed.id}/status`, { token: owner, method: 'PATCH', body: { status: s } });
+  ok(r.status === 200 && r.json.order.status === s, `transition → ${s}`);
+}
+const done = (await call(`/admin/orders/${placed.id}`, { token: owner })).json.order;
+ok(done.isPaid === true && done.paidAt, 'completing the order settled the bill');
+ok(done.events.length === 5, `audit trail has 5 events (got ${done.events.length})`);
+ok((await call(`/admin/orders/${placed.id}/status`, { token: owner, method: 'PATCH', body: { status: 'ACCEPTED' } })).status === 400,
+  'a completed order is terminal');
+
+console.log('\n── PRICING & COUPONS ──');
+const q = (await call('/public/quote?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 4 }], couponCode: 'WELCOME10' } })).json;
+const expectSub = Number(item.basePrice) * 4;
+ok(q.subtotal === expectSub, 'quote subtotal correct');
+ok(q.discountAmount === Math.round(expectSub * 0.1 * 100) / 100 || q.discountAmount === 100, 'percent coupon applied (capped at 100)');
+ok(Math.abs(q.totalAmount - Math.round((expectSub - q.discountAmount) * 1.05 * 100) / 100) < 0.02, 'tax applied after discount');
+ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 1 }], couponCode: 'NOPE' } })).status === 400, 'unknown coupon rejected');
+ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 1 }], couponCode: 'FEAST15' } })).status === 400, 'coupon below its minimum rejected');
+
+console.log('\n── VALIDATION ──');
+ok((await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 1 }], customerName: 'A', tableId: tbl.id } })).status === 400, 'short name rejected');
+ok((await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [], customerName: 'Valid Name', tableId: tbl.id } })).status === 400, 'empty cart rejected');
+ok((await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: item.id, quantity: 1 }], customerName: 'Valid Name' } })).status === 400, 'missing table rejected');
+ok((await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: flat.id, quantity: 1 }], customerName: 'Valid Name', tableId: tbl.id } })).status === 400, 'unavailable item rejected');
+ok((await call('/public/restaurant?restaurant=does-not-exist')).status === 404, 'unknown restaurant slug → 404');
+
+console.log('\n── OWNER SELF-LOCKOUT GUARDS ──');
+const me = (await call('/auth/me', { token: owner })).json.user;
+ok((await call(`/admin/staff/${me.id}`, { token: owner, method: 'PATCH', body: { isActive: false } })).status === 400, 'owner cannot deactivate themselves');
+ok((await call(`/admin/staff/${me.id}`, { token: owner, method: 'DELETE' })).status === 400, 'owner cannot delete themselves');
+
+console.log('\n── PLATFORM ONBOARDING ──');
+const slug = `test-cafe-${Date.now().toString(36)}`;
+const created = await call('/platform/restaurants', { token: platform, method: 'POST',
+  body: { name: 'Test Cafe', slug, ownerName: 'Test Owner', ownerEmail: `o@${slug}.test`, ownerPassword: 'testpass123', tableCount: 4 } });
+ok(created.status === 201, 'restaurant onboarded');
+const newId = created.json.restaurant?.id;
+ok((await call('/platform/restaurants', { token: platform, method: 'POST',
+  body: { name: 'Dup Cafe', slug, ownerName: 'Dup Owner', ownerEmail: 'dup@y.test', ownerPassword: 'testpass123' } })).status === 409, 'duplicate slug → 409');
+
+const newOwner = await login(`o@${slug}.test`, 'testpass123');
+ok(!!newOwner, 'the new owner can sign in immediately');
+const newTables = (await call('/admin/tables', { token: newOwner })).json.tables;
+ok(newTables.length === 4, 'starter tables created');
+ok((await call('/admin/menu/categories', { token: newOwner })).json.categories.length === 4, 'starter categories created');
+ok((await call('/admin/orders?pageSize=5', { token: newOwner })).json.orders.length === 0, 'a fresh tenant sees zero orders');
+
+ok((await call(`/platform/restaurants/${newId}`, { token: platform, method: 'DELETE', body: { confirmSlug: 'wrong' } })).status === 400, 'delete needs the exact slug');
+ok((await call(`/platform/restaurants/${newId}`, { token: platform, method: 'DELETE', body: { confirmSlug: slug } })).status === 200, 'restaurant deleted with confirmation');
+
+console.log('\n── CLEANUP ──');
+await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'DELETE' });
+await call(`/admin/menu/items/${upd.id}`, { token: owner, method: 'DELETE' });
+ok((await call(`/admin/menu/categories/${cat.id}`, { token: owner, method: 'DELETE' })).status === 200, 'empty category deleted');
+
+console.log(`\n${'═'.repeat(40)}\n  PASS ${pass}   FAIL ${fail}\n${'═'.repeat(40)}`);
+process.exit(fail ? 1 : 0);
