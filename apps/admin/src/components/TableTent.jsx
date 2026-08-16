@@ -8,16 +8,18 @@
  *
  * Two constraints shape every theme:
  *  · the QR always sits on a light panel, because scanners need the contrast;
- *  · the code is requested at print resolution, since a screen-sized image
- *    prints visibly fuzzy at the size a diner reads it from.
+ *  · the code is drawn as vector SVG generated on the spot, so it is sharp at
+ *    any print size and never waits on a network request.
  */
 
-import { qrImageFor } from './tent-themes';
+import { qrPath } from './tent-themes';
 
 export default function TableTent({ restaurant, table, url, theme = 'classic', preview = false }) {
   const brand = restaurant?.primaryColor || '#c4451f';
   const accent = restaurant?.accentColor || '#f5b301';
   const name = restaurant?.name || 'Restaurant';
+  // Synchronous: nothing to await, so the print dialog can never open early.
+  const { d, size } = qrPath(url);
 
   return (
     <div
@@ -31,7 +33,15 @@ export default function TableTent({ restaurant, table, url, theme = 'classic', p
       </div>
 
       <div className="tent-qr-frame">
-        <img className="tent-qr" src={qrImageFor(url)} alt={`Order at table ${table.label}`} />
+        <svg
+          className="tent-qr"
+          viewBox={`0 0 ${size} ${size}`}
+          shapeRendering="crispEdges"
+          role="img"
+          aria-label={`Order at table ${table.label}`}
+        >
+          <path d={d} fill="#000000" />
+        </svg>
       </div>
 
       <p className="tent-cta">Scan to see the menu &amp; order</p>

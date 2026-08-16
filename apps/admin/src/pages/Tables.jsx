@@ -39,6 +39,35 @@ function storefrontBase(restaurant) {
 /** The URL printed into a table's QR code — scanning it pre-fills the table. */
 const qrUrlFor = (base, table) => `${base}/?t=${table.qrToken}`;
 
+/** The design chooser, shared by the single-table and whole-set dialogs. */
+function ThemePicker({ theme, onChange, restaurant }) {
+  return (
+    <>
+      <span className="block-label">Design</span>
+      <div className="theme-picker">
+        {TENT_THEMES.map((t) => (
+          <button key={t.id} type="button"
+            className={`theme-option ${theme === t.id ? 'active' : ''}`}
+            onClick={() => onChange(t.id)}>
+            <span className="theme-swatch" aria-hidden>
+              <i style={{ background: restaurant?.primaryColor || '#c4451f' }} />
+              <i style={{ background: restaurant?.accentColor || '#f5b301' }} />
+            </span>
+            <strong>{t.name}</strong>
+            <span>{t.note}</span>
+          </button>
+        ))}
+      </div>
+      {HEAVY_INK.includes(theme) && (
+        <p className="field-hint" style={{ marginTop: '0.6rem' }}>
+          This design covers the whole card in colour. Printing a full set uses a lot of
+          ink — Classic or Banner is kinder to a desk printer.
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function Tables() {
   const { can } = useAuth();
   const toast = useToast();
@@ -78,6 +107,7 @@ export default function Tables() {
   /** null = print one table; 'all' = every active table, one per page. */
   const [printing, setPrinting] = useState(null);
   const [theme, setTheme] = useState('classic');
+  const [printAll, setPrintAll] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -123,7 +153,7 @@ export default function Tables() {
         {editable && (
           <div className="page-actions">
             {tables.length > 0 && (
-              <button className="btn btn-ghost" onClick={() => printTents('all')}>
+              <button className="btn btn-ghost" onClick={() => setPrintAll(true)}>
                 Print all QR codes
               </button>
             )}
@@ -208,28 +238,7 @@ export default function Tables() {
             </div>
 
             <div className="qr-choices">
-              <span className="block-label">Design</span>
-              <div className="theme-picker">
-                {TENT_THEMES.map((t) => (
-                  <button key={t.id} type="button"
-                    className={`theme-option ${theme === t.id ? 'active' : ''}`}
-                    onClick={() => setTheme(t.id)}>
-                    <span className="theme-swatch" aria-hidden>
-                      <i style={{ background: restaurant?.primaryColor || '#c4451f' }} />
-                      <i style={{ background: restaurant?.accentColor || '#f5b301' }} />
-                    </span>
-                    <strong>{t.name}</strong>
-                    <span>{t.note}</span>
-                  </button>
-                ))}
-              </div>
-
-              {HEAVY_INK.includes(theme) && (
-                <p className="field-hint" style={{ marginTop: '0.6rem' }}>
-                  This design covers the whole card in colour. Printing a full set uses a
-                  lot of ink — Classic or Banner is kinder to a desk printer.
-                </p>
-              )}
+              <ThemePicker theme={theme} onChange={setTheme} restaurant={restaurant} />
 
               <span className="block-label" style={{ marginTop: '1rem' }}>Link in this code</span>
               <code className="qr-url">{qrUrlFor(base, qrTable)}</code>
@@ -237,6 +246,47 @@ export default function Tables() {
                 navigator.clipboard?.writeText(qrUrlFor(base, qrTable));
                 toast.success('Link copied');
               }}>Copy link</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {printAll && (
+        <Modal
+          title="Print every table"
+          subtitle={`${tables.filter((t) => t.isActive).length} tables · four per sheet, with cut lines`}
+          onClose={() => setPrintAll(false)}
+          width={560}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setPrintAll(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { setPrintAll(false); printTents('all'); }}>
+                Print {tables.filter((t) => t.isActive).length} tables
+              </button>
+            </>
+          }
+        >
+          {!storefrontConfigured && (
+            <p className="qr-warning">
+              No storefront URL is set for this restaurant, so every code will point at
+              <code> {base}</code>. Set it under Settings → Storefront before printing a
+              whole set.
+            </p>
+          )}
+
+          <div className="qr-layout">
+            <div className="qr-preview-pane">
+              {tables[0] && (
+                <TableTent restaurant={restaurant} table={tables[0]}
+                  url={qrUrlFor(base, tables[0])} theme={theme} preview />
+              )}
+            </div>
+            <div className="qr-choices">
+              <ThemePicker theme={theme} onChange={setTheme} restaurant={restaurant} />
+              <p className="field-hint" style={{ marginTop: '0.9rem' }}>
+                Inactive tables are left out. Every table prints in the design you pick here,
+                and the choice is saved for next time.
+              </p>
             </div>
           </div>
         </Modal>

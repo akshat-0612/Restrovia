@@ -951,6 +951,13 @@ textarea { resize: vertical; }
     display: flex; flex-wrap: wrap;
     gap: 10mm 12mm; align-content: flex-start; justify-content: center;
     break-after: page; page-break-after: always;
+    break-inside: avoid; page-break-inside: avoid;
+    /* A definite height is what actually clips the following sheet, which
+       otherwise bleeds a hairline of its first row across the bottom of this
+       one. It has to sit inside A4 less its 12mm margins (273mm) and still
+       clear two rows of tents (~264mm including the gap and cut lines). */
+    height: 270mm;
+    overflow: hidden;
   }
   .print-sheets.multi .print-page:last-child { break-after: auto; page-break-after: auto; }
   /* Pinning the basis is what puts two in a row; left to shrink-to-fit, each
