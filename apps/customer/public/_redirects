@@ -1,0 +1,3 @@
+# Static hosts serve files, not routes. Hand every path to the SPA and let
+# React Router decide, otherwise a refresh on /orders is a 404.
+/*    /index.html   200

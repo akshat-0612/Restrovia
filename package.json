@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Delightful — multi-tenant restaurant ordering platform (customer web app + owner admin portal)",
+  "description": "Delightful \u2014 multi-tenant restaurant ordering platform (customer web app + owner admin portal)",
   "workspaces": [
     "packages/*",
     "server",
@@ -22,7 +22,13 @@
     "db:seed": "npm run db:seed -w server",
     "db:studio": "npm run db:studio -w server",
     "db:reset": "npm run db:reset -w server",
-    "setup": "npm install && npm run db:up && sleep 4 && npm run db:migrate && npm run db:seed"
+    "setup": "npm install && npm run db:up && sleep 4 && npm run db:migrate && npm run db:seed",
+    "build:customer": "npm run build -w @delightful/customer",
+    "build:admin": "npm run build -w @delightful/admin",
+    "start:server": "npm run start -w server",
+    "prisma:generate": "npm run generate -w server",
+    "prisma:deploy": "npm run db:deploy -w server",
+    "build:server": "npm run prisma:generate && npm run prisma:deploy"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"

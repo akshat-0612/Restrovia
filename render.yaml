@@ -1,0 +1,28 @@
+# Render blueprint for the API. The frontends are static and live on
+# Cloudflare Pages, so only the server is described here.
+#
+# Point Render at the repo ROOT, not at server/. npm workspaces hoist
+# node_modules to the root, and the frontends resolve @shared through a relative
+# path, so a build that only sees server/ has no dependencies to build with.
+services:
+  - type: web
+    name: delightful-api
+    runtime: node
+    plan: free
+    # Build, then apply any pending migrations. Free-tier Render has no separate
+    # release phase, so migrations ride along with the build.
+    buildCommand: npm ci && npm run build:server
+    startCommand: npm run start:server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render dashboard, not here — they are secrets.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

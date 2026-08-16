@@ -199,17 +199,137 @@ terminal, and cancelling requires a reason.
 
 ## Deploying
 
-- **API** — any Node host (Railway, Render, Fly). Set `DATABASE_URL`, a long random
-  `JWT_SECRET`, and `CORS_ORIGINS` listing every restaurant's customer domain plus the
-  admin portal. Run `npm run db:deploy -w server` on release.
-- **Rate limits** — `ORDER_RATE_LIMIT` and `TRACKING_RATE_LIMIT` are per IP over ten
-  minutes; `LOGIN_RATE_LIMIT` and `LOGIN_SPRAY_LIMIT` cover failed sign-ins over
-  fifteen. Everyone on a restaurant's wifi shares one IP, so the per-address ones are
-  ceilings for a whole room rather than one person; raise them for a busy site.
-- **Limiter state is in memory**, so it resets on restart and is per-instance. Running
-  more than one API instance means putting a shared store behind it.
-- **Frontends** — static builds; any static host works. The customer app needs
-  `VITE_RESTAURANT_SLUG` and `VITE_API_URL`; the admin portal needs `VITE_API_URL` and
-  `VITE_CUSTOMER_URL` (used to build table QR codes).
+One repository, three deployment targets. Nothing is split into separate repos —
+each host builds the whole tree and is told which workspace to produce.
 
-Change `JWT_SECRET` and every seeded password before going live.
+| What | Where | Cost |
+|---|---|---|
+| Customer app | Cloudflare Pages (static) | free |
+| Admin portal | Cloudflare Pages (static) | free |
+| API | Render web service | free tier, or ~$5/mo to avoid cold starts |
+| Database | Neon (Postgres) | free |
+
+### The monorepo rule
+
+**Every host must build from the repository root, not from a subdirectory.**
+npm workspaces hoist `node_modules` to the root, and the frontends resolve
+`@shared` through a relative path into `packages/shared`. A build that only sees
+`apps/customer` has neither. So leave "root directory" blank everywhere and let the
+build command pick the target.
+
+### 1. Database — Neon
+
+Create a project and take the **pooled** connection string (the one containing
+`-pooler`). Prisma opens a connection per instance and will exhaust a direct
+connection limit:
+
+```
+DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/delightful?sslmode=require&pgbouncer=true&connection_limit=1"
+```
+
+### 2. API — Render
+
+There is a `render.yaml` blueprint in the repo, or configure it by hand:
+
+| Setting | Value |
+|---|---|
+| Root directory | *(blank — repo root)* |
+| Build command | `npm ci && npm run build:server` |
+| Start command | `npm run start:server` |
+| Health check path | `/api/health` |
+
+`build:server` generates the Prisma client and applies pending migrations. Render's
+free tier has no separate release phase, so migrations ride along with the build.
+
+Environment variables:
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | the pooled Neon string |
+| `JWT_SECRET` | a long random string — generate a fresh one, never reuse the dev value |
+| `CORS_ORIGINS` | comma-separated: the admin URL plus every customer domain |
+| `NODE_ENV` | `production` |
+| `NODE_VERSION` | `20` |
+
+Render sets `PORT` itself, and the server already reads it.
+
+Seed nothing in production. Create your first restaurant through the platform
+admin screen instead — `db:seed` deletes and recreates the seeded tenants.
+To create the very first platform-admin account, run this once against the
+production database from your machine:
+
+```bash
+DATABASE_URL="<neon-pooled-url>" node -e "
+import('bcryptjs').then(async ({default:bcrypt}) => {
+  const {PrismaClient} = await import('@prisma/client');
+  const db = new PrismaClient();
+  await db.user.create({ data: {
+    name: 'Platform Admin', email: 'you@yourdomain.com', role: 'PLATFORM_ADMIN',
+    passwordHash: await bcrypt.hash('<a-strong-password>', 10),
+  }});
+  console.log('created'); await db.\$disconnect();
+})"
+```
+
+### 3. Frontends — Cloudflare Pages
+
+Two projects, both pointed at the same repository, differing only in build command
+and output directory.
+
+**Admin portal:**
+
+| Setting | Value |
+|---|---|
+| Build command | `npm ci && npm run build:admin` |
+| Output directory | `apps/admin/dist` |
+| `VITE_API_URL` | your Render URL, e.g. `https://delightful-api.onrender.com` |
+| `VITE_CUSTOMER_URL` | the customer domain (used to build table QR codes) |
+| `NODE_VERSION` | `20` |
+
+**Customer app:**
+
+| Setting | Value |
+|---|---|
+| Build command | `npm ci && npm run build:customer` |
+| Output directory | `apps/customer/dist` |
+| `VITE_API_URL` | your Render URL |
+| `VITE_RESTAURANT_SLUG` | the restaurant this deployment serves |
+| `NODE_VERSION` | `20` |
+
+Both apps ship a `public/_redirects` containing `/* /index.html 200`. Without it a
+static host returns 404 for `/orders` or any refreshed deep link, because it looks
+for a file rather than handing the path to the router.
+
+### One customer project per restaurant — for now
+
+`VITE_RESTAURANT_SLUG` is baked in at build time, so today each restaurant needs its
+own Pages project. Resolving the tenant from the request hostname instead would
+collapse that to a single project with many domains attached, and would replace the
+hand-maintained `CORS_ORIGINS` list with a database lookup. Worth doing before the
+third client.
+
+### Order of operations
+
+1. Create the Neon database.
+2. Deploy the API to Render with `DATABASE_URL` and `JWT_SECRET` (leave `CORS_ORIGINS` empty for now) — the build applies migrations.
+3. Create the platform-admin account with the snippet above.
+4. Deploy the admin portal to Pages with `VITE_API_URL`.
+5. Set `CORS_ORIGINS` on Render to the admin URL and redeploy.
+6. Sign in, onboard your first restaurant, note its slug.
+7. Deploy a customer project with that slug, then add its URL to `CORS_ORIGINS`.
+
+### Custom domains
+
+Attach the client's domain to the Pages project and have them point a CNAME at it.
+Keep the deployment in **your** Cloudflare account rather than theirs: one place to
+ship fixes, your source stays yours, and suspending a non-paying client is a
+`isActive` toggle on their restaurant row rather than a negotiation.
+
+### Known limits of the free tier
+
+- **Render free sleeps after 15 minutes idle** and takes roughly 50 seconds to wake.
+  A customer scanning a QR code at a quiet hour waits that long. Fine while
+  demoing; move to a paid instance before a real restaurant depends on it.
+- **Rate-limit state is in memory**, so it resets on restart and is per-instance.
+  Running more than one API instance needs a shared store behind it.
+- Neon free projects suspend when idle but wake in under a second.
