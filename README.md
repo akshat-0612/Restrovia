@@ -81,7 +81,11 @@ build serves a café in Pune and a pizzeria in Bengaluru.
 
 `Restaurant` is the tenant root; every other tenant-owned table carries `restaurantId`.
 
-- **Customer requests** identify their restaurant by slug (`resolvePublicTenant`).
+- **Customer requests** identify their restaurant by the host they arrived on
+  (`resolvePublicTenant` → `slugForHostname`), or by an explicit slug when a build is
+  pinned to one. A hostname maps to a tenant through the `restaurant_domains` table
+  or as a subdomain of `PLATFORM_DOMAIN`; the lookup is cached for a minute and
+  invalidated the moment a domain is attached or detached.
 - **Admin requests** are pinned to `req.restaurantId` by `resolveTenant`, taken from the
   authenticated user's own record — never from the request body. Every admin query
   filters on it, so a crafted id belonging to another restaurant simply returns 404.
@@ -247,7 +251,8 @@ Environment variables:
 |---|---|
 | `DATABASE_URL` | the pooled Neon string |
 | `JWT_SECRET` | a long random string — generate a fresh one, never reuse the dev value |
-| `CORS_ORIGINS` | comma-separated: the admin URL plus every customer domain |
+| `CORS_ORIGINS` | the admin portal URL. Restaurant domains resolve from the database and are not listed here |
+| `PLATFORM_DOMAIN` | e.g. `delightful.app` — every restaurant gets `<slug>.<this>` for free |
 | `NODE_ENV` | `production` |
 | `NODE_VERSION` | `20` |
 
@@ -293,20 +298,31 @@ and output directory.
 | Build command | `npm ci && npm run build:customer` |
 | Output directory | `apps/customer/dist` |
 | `VITE_API_URL` | your Render URL |
-| `VITE_RESTAURANT_SLUG` | the restaurant this deployment serves |
+| `VITE_RESTAURANT_SLUG` | **leave unset** — the API resolves the restaurant from the domain |
 | `NODE_VERSION` | `20` |
 
 Both apps ship a `public/_redirects` containing `/* /index.html 200`. Without it a
 static host returns 404 for `/orders` or any refreshed deep link, because it looks
 for a file rather than handing the path to the router.
 
-### One customer project per restaurant — for now
+### One customer deployment, many restaurants
 
-`VITE_RESTAURANT_SLUG` is baked in at build time, so today each restaurant needs its
-own Pages project. Resolving the tenant from the request hostname instead would
-collapse that to a single project with many domains attached, and would replace the
-hand-maintained `CORS_ORIGINS` list with a database lookup. Worth doing before the
-third client.
+There is **one** customer-app project no matter how many restaurants you sell to.
+Which one a visitor sees is decided by the host they arrived on, resolved by the API:
+
+1. an explicit slug, if the build is pinned to one (development, one-off builds)
+2. a custom domain attached to a restaurant
+3. a subdomain of `PLATFORM_DOMAIN` — `delight-food.delightful.app` → `delight-food`
+
+Point a wildcard CNAME (`*.delightful.app`) at the customer-app deployment and every
+restaurant has a working storefront the moment it is created — no DNS, no build, no
+redeploy. A client who wants their own domain points a CNAME at the same deployment,
+and you attach it under **Domains** on the platform screen; it works on the next
+request.
+
+`CORS_ORIGINS` no longer grows with each sale. Any host that resolves to a restaurant
+is allowed by definition, so the list is only for things that aren't storefronts —
+chiefly the admin portal.
 
 ### Order of operations
 
@@ -315,15 +331,20 @@ third client.
 3. Create the platform-admin account with the snippet above.
 4. Deploy the admin portal to Pages with `VITE_API_URL`.
 5. Set `CORS_ORIGINS` on Render to the admin URL and redeploy.
-6. Sign in, onboard your first restaurant, note its slug.
-7. Deploy a customer project with that slug, then add its URL to `CORS_ORIGINS`.
+6. Deploy the customer app to Pages — once, with no slug — and point a wildcard
+   CNAME (`*.yourdomain`) at it. Set `PLATFORM_DOMAIN` on the API to match.
+7. Sign in and onboard your first restaurant. Its storefront is live immediately at
+   `<slug>.yourdomain`. Attach a custom domain later from the same screen.
+
+Selling to the next restaurant is then step 7 alone.
 
 ### Custom domains
 
-Attach the client's domain to the Pages project and have them point a CNAME at it.
-Keep the deployment in **your** Cloudflare account rather than theirs: one place to
-ship fixes, your source stays yours, and suspending a non-paying client is a
-`isActive` toggle on their restaurant row rather than a negotiation.
+Add the client's domain to the single Pages project, have them point a CNAME at it,
+then attach it to their restaurant under **Domains**. Keep the deployment in **your**
+Cloudflare account rather than theirs: one place to ship fixes, your source stays
+yours, and suspending a non-paying client is an `isActive` toggle on their restaurant
+row rather than a negotiation.
 
 ### Known limits of the free tier
 

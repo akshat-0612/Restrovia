@@ -142,4 +142,7 @@ export const api = {
   updateRestaurant:    (id, body) => request(`/platform/restaurants/${id}`, { method: 'PATCH', body }),
   deleteRestaurant:    (id, confirmSlug) =>
     request(`/platform/restaurants/${id}`, { method: 'DELETE', body: { confirmSlug } }),
+  addDomain:    (restaurantId, body) =>
+    request(`/platform/restaurants/${restaurantId}/domains`, { method: 'POST', body }),
+  removeDomain: (domainId) => request(`/platform/domains/${domainId}`, { method: 'DELETE' }),
 };

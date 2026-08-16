@@ -216,6 +216,65 @@ ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
 ok((await call('/public/quote?restaurant=delight-food', { method: 'POST',
   body: { cart: [{ menuItemId: item.id, quantity: 1 }], couponCode: 'FEAST15' } })).status === 400, 'coupon below its minimum rejected');
 
+console.log('\n── HOSTNAME TENANT RESOLUTION ──');
+// One customer-app deployment serves every restaurant; the host a visitor arrived
+// on is what picks the tenant. These run against whatever PLATFORM_DOMAIN is set.
+const asHost = async (host, path = '/restaurant') => {
+  const r = await fetch(`${API}/public${path}`, { headers: { Origin: `https://${host}` } });
+  return { status: r.status, json: await r.json().catch(() => ({})) };
+};
+
+const restaurantsList = (await call('/platform/restaurants', { token: platform })).json.restaurants;
+const rDelight = restaurantsList.find((r) => r.slug === 'delight-food');
+const rUrban = restaurantsList.find((r) => r.slug === 'urban-slice');
+
+const hostA = `test-${Date.now().toString(36)}.example.com`;
+const hostB = `other-${Date.now().toString(36)}.example.com`;
+const addA = await call(`/platform/restaurants/${rDelight.id}/domains`, {
+  token: platform, method: 'POST', body: { hostname: hostA, isPrimary: true },
+});
+const addB = await call(`/platform/restaurants/${rUrban.id}/domains`, {
+  token: platform, method: 'POST', body: { hostname: hostB },
+});
+ok(addA.status === 201 && addB.status === 201, 'domains attached to two restaurants');
+
+ok((await asHost(hostA)).json.slug === 'delight-food', 'first host resolves to its restaurant');
+ok((await asHost(hostB)).json.slug === 'urban-slice', 'second host resolves to the other restaurant');
+
+ok((await call(`/platform/restaurants/${rUrban.id}/domains`, {
+  token: platform, method: 'POST', body: { hostname: hostA },
+})).status === 409, 'a domain cannot be claimed by two restaurants');
+
+ok((await asHost(hostA.toUpperCase())).json.slug === 'delight-food', 'hostname matching is case-insensitive');
+
+// An unknown origin is stopped at the CORS layer, before any tenant lookup.
+ok((await asHost('nobody-owns-this.example.com')).status === 403, 'an unclaimed host is refused');
+
+// The whole storefront works with no slug named anywhere.
+const hostMenu = await asHost(hostA, '/menu');
+ok(hostMenu.status === 200 && hostMenu.json.categories.length > 0, 'menu loads over the host alone');
+const hostTables = await asHost(hostA, '/tables');
+const hostItem = hostMenu.json.categories.flatMap((c) => c.items).find((i) => i.isAvailable && !i.variants.length);
+const hostOrder = await fetch(`${API}/public/orders`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: `https://${hostA}` },
+  body: JSON.stringify({ cart: [{ menuItemId: hostItem.id, quantity: 1 }],
+    customerName: 'Host Resolution', customerPhone: '9700000009', tableId: hostTables.json.tables[0].id }),
+}).then((r) => r.json());
+ok(hostOrder.order?.orderNumber > 0, 'an order can be placed with the host as the only tenant signal');
+
+// An explicit slug still wins, which is what makes local development work.
+const overridden = await fetch(`${API}/public/restaurant?restaurant=urban-slice`, {
+  headers: { Origin: `https://${hostA}` },
+}).then((r) => r.json());
+ok(overridden.slug === 'urban-slice', 'an explicit slug overrides the host');
+
+// Detaching frees the host immediately rather than after the cache expires.
+const attached = (await call('/platform/restaurants', { token: platform })).json.restaurants
+  .flatMap((r) => r.domains).filter((d) => d.hostname === hostA || d.hostname === hostB);
+for (const d of attached) await call(`/platform/domains/${d.id}`, { token: platform, method: 'DELETE' });
+ok((await asHost(hostA)).status === 403, 'a detached host stops resolving at once');
+
 console.log('\n── BATCH ORDER LOOKUP ──');
 const tbl2 = (await call('/public/tables?restaurant=delight-food')).json.tables[1];
 const mk = async (name, phone) => (await call('/public/orders?restaurant=delight-food', { method: 'POST',

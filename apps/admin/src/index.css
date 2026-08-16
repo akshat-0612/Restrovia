@@ -797,3 +797,37 @@ textarea { resize: vertical; }
   body, :root { background: #fff; color: #000; }
   .qr-url, .qr-caption { color: #000; }
 }
+
+/* ═══════════════════════ Domains ═══════════════════════ */
+.domain-cell {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.8rem; text-align: left; color: var(--text-2);
+}
+.domain-cell:hover { color: var(--text); }
+.domain-cell .mono { font-size: 0.78rem; }
+.domain-more {
+  font-size: 0.68rem; padding: 0.05rem 0.35rem; border-radius: 10px;
+  background: var(--surface-3); color: var(--muted);
+}
+.domain-none { color: var(--brand); font-size: 0.78rem; font-weight: 600; }
+
+.domain-default {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.75rem 0.9rem; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 0.75rem;
+}
+.domain-default div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.domain-default strong { font-size: 0.82rem; word-break: break-all; }
+.domain-default span { font-size: 0.71rem; color: var(--muted); }
+
+.domain-list { list-style: none; display: flex; flex-direction: column; }
+.domain-list li {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.55rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem;
+}
+.domain-list li:last-child { border-bottom: none; }
+.domain-list li .mono { flex: 1; min-width: 0; word-break: break-all; }
+
+.domain-add { display: flex; gap: 0.5rem; }
+.domain-add input { flex: 1; }
+.domain-add .btn { white-space: nowrap; }

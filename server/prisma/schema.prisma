@@ -67,6 +67,7 @@ model Restaurant {
   tables     RestaurantTable[]
   orders     Order[]
   coupons    Coupon[]
+  domains    RestaurantDomain[]
 
   @@index([isActive])
   @@map("restaurants")
@@ -76,6 +77,27 @@ enum RestaurantPlan {
   STARTER
   GROWTH
   PRO
+}
+
+/// A hostname the customer app answers on for this restaurant.
+///
+/// One deployment serves every restaurant; which one a visitor sees is decided by
+/// the host they arrived on. Unique across the whole table, so a domain can never
+/// be pointed at two tenants.
+model RestaurantDomain {
+  id           String  @id @default(cuid())
+  restaurantId String
+  /// Lowercase, no scheme and no port, e.g. "order.delightfood.in".
+  hostname     String  @unique
+  /// The one shown in the admin portal as the restaurant's canonical address.
+  isPrimary    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@map("restaurant_domains")
 }
 
 // ───────────────────────────── Users & auth ─────────────────────────────

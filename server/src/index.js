@@ -21,6 +21,7 @@ import { resolveTenant } from './middleware/tenant.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { ApiError } from './lib/errors.js';
 import { prisma } from './lib/prisma.js';
+import { isAllowedOrigin } from './lib/tenantResolver.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -29,8 +30,12 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 
 /**
- * Every restaurant's customer app runs on its own domain, so the allowlist grows
- * with each sale. In development any localhost port is accepted.
+ * Which browsers may call this API.
+ *
+ * Restaurant domains are deliberately not listed here — any host that resolves to
+ * a restaurant is by definition one of ours, so the check is a cached database
+ * lookup rather than an env var that must be edited and redeployed on every sale.
+ * CORS_ORIGINS remains for the things that aren't tenants, chiefly the admin portal.
  */
 const allowed = (process.env.CORS_ORIGINS || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
@@ -38,16 +43,21 @@ const allowed = (process.env.CORS_ORIGINS || '')
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true); // curl, server-to-server, health checks
-    if (allowed.includes(origin)) return callback(null, true);
     if (process.env.NODE_ENV !== 'production' && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
-    // A rejected origin is a configuration mistake, not a server fault. Returning
-    // a plain Error here would surface as a 500 and log a stack trace for every
-    // blocked request, burying real errors while saying nothing useful.
-    callback(ApiError.forbidden(
-      `Origin ${origin} is not allowed. Add it to CORS_ORIGINS on the API.`
-    ));
+    isAllowedOrigin(origin, allowed)
+      .then((ok) => {
+        // A rejected origin is a configuration mistake, not a server fault. A plain
+        // Error here would surface as a 500 and log a stack trace for every blocked
+        // request, burying real errors while saying nothing useful.
+        if (ok) return callback(null, true);
+        callback(ApiError.forbidden(
+          `Origin ${origin} is not allowed. Attach the domain to a restaurant, ` +
+          `or add it to CORS_ORIGINS if it is not a storefront.`
+        ));
+      })
+      .catch(callback);
   },
   credentials: true,
 }));

@@ -6,6 +6,7 @@ import { ApiError, asyncHandler } from '../lib/errors.js';
 import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { round2 } from '../lib/money.js';
 import { resolveRange } from '../lib/time.js';
+import { invalidateHostnameCache, normalizeHostname } from '../lib/tenantResolver.js';
 
 const router = Router();
 router.use(requireAuth, requirePlatformAdmin);
@@ -14,7 +15,10 @@ router.use(requireAuth, requirePlatformAdmin);
 router.get('/restaurants', asyncHandler(async (_req, res) => {
   const restaurants = await prisma.restaurant.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { orders: true, users: true, menuItems: true } } },
+    include: {
+      _count: { select: { orders: true, users: true, menuItems: true } },
+      domains: { orderBy: [{ isPrimary: 'desc' }, { hostname: 'asc' }] },
+    },
   });
 
   const revenue = await prisma.order.groupBy({
@@ -35,6 +39,9 @@ router.get('/restaurants', asyncHandler(async (_req, res) => {
       userCount: r._count.users,
       menuItemCount: r._count.menuItems,
       lifetimeRevenue: round2(revenueBy.get(r.id) || 0),
+      domains: r.domains.map((d) => ({ id: d.id, hostname: d.hostname, isPrimary: d.isPrimary })),
+      // Every restaurant is reachable here without any DNS being set up.
+      platformHost: process.env.PLATFORM_DOMAIN ? `${r.slug}.${process.env.PLATFORM_DOMAIN}` : null,
     })),
   }));
 }));
@@ -106,6 +113,7 @@ router.post('/restaurants', asyncHandler(async (req, res) => {
     ownerPassword: z.string().min(8, 'Owner password must be at least 8 characters'),
     tableCount: z.number().int().min(0).max(60).default(10),
     seedStarterMenu: z.boolean().default(true),
+    domain: z.string().trim().max(253).optional(),
   }).parse(req.body);
 
   const taken = await prisma.restaurant.findUnique({ where: { slug: body.slug }, select: { id: true } });
@@ -139,6 +147,13 @@ router.post('/restaurants', asyncHandler(async (req, res) => {
       });
     }
 
+    if (body.domain) {
+      const host = normalizeHostname(body.domain);
+      if (host) await tx.restaurantDomain.create({
+        data: { restaurantId: restaurant.id, hostname: host, isPrimary: true },
+      });
+    }
+
     if (body.seedStarterMenu) {
       const starters = [
         { name: 'Starters', icon: '🥟' },
@@ -154,9 +169,10 @@ router.post('/restaurants', asyncHandler(async (req, res) => {
     return restaurant;
   });
 
+  invalidateHostnameCache();
   res.status(201).json({
     restaurant: serialize(result),
-    hint: `Deploy the customer app with VITE_RESTAURANT_SLUG=${result.slug}`,
+    platformHost: process.env.PLATFORM_DOMAIN ? `${result.slug}.${process.env.PLATFORM_DOMAIN}` : null,
   });
 }));
 
@@ -172,6 +188,51 @@ router.patch('/restaurants/:id', asyncHandler(async (req, res) => {
   res.json({ restaurant: serialize(restaurant) });
 }));
 
+/* ───────────────────────── Domains ───────────────────────── */
+
+router.post('/restaurants/:id/domains', asyncHandler(async (req, res) => {
+  const { hostname, isPrimary } = z.object({
+    hostname: z.string().trim().min(3).max(253),
+    isPrimary: z.boolean().default(false),
+  }).parse(req.body);
+
+  const host = normalizeHostname(hostname);
+  if (!host || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) {
+    throw ApiError.badRequest('Enter a valid domain, e.g. order.theirrestaurant.com');
+  }
+
+  const restaurant = await prisma.restaurant.findUnique({ where: { id: req.params.id } });
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+
+  const taken = await prisma.restaurantDomain.findUnique({
+    where: { hostname: host }, include: { restaurant: { select: { name: true } } },
+  });
+  if (taken) throw ApiError.conflict(`${host} is already pointed at ${taken.restaurant.name}`);
+
+  const domain = await prisma.$transaction(async (tx) => {
+    if (isPrimary) {
+      await tx.restaurantDomain.updateMany({
+        where: { restaurantId: restaurant.id }, data: { isPrimary: false },
+      });
+    }
+    return tx.restaurantDomain.create({
+      data: { restaurantId: restaurant.id, hostname: host, isPrimary },
+    });
+  });
+
+  // So the new domain works on the very next request rather than a minute later.
+  invalidateHostnameCache(host);
+  res.status(201).json({ domain: serialize(domain) });
+}));
+
+router.delete('/domains/:domainId', asyncHandler(async (req, res) => {
+  const domain = await prisma.restaurantDomain.findUnique({ where: { id: req.params.domainId } });
+  if (!domain) throw ApiError.notFound('Domain not found');
+  await prisma.restaurantDomain.delete({ where: { id: domain.id } });
+  invalidateHostnameCache(domain.hostname);
+  res.json({ ok: true });
+}));
+
 /** Full teardown of a client. Irreversible — cascades through every tenant table. */
 router.delete('/restaurants/:id', asyncHandler(async (req, res) => {
   const { confirmSlug } = z.object({ confirmSlug: z.string() }).parse(req.body);
@@ -181,6 +242,9 @@ router.delete('/restaurants/:id', asyncHandler(async (req, res) => {
     throw ApiError.badRequest('Type the exact restaurant slug to confirm deletion');
   }
   await prisma.restaurant.delete({ where: { id: restaurant.id } });
+  // Domains cascade away with the restaurant; clear the cache so a freed hostname
+  // can be reassigned immediately.
+  invalidateHostnameCache();
   res.json({ ok: true });
 }));
 

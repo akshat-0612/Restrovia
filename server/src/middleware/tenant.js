@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { ApiError, asyncHandler } from '../lib/errors.js';
+import { requestHostname, slugForHostname } from '../lib/tenantResolver.js';
 
 /**
  * Resolves which restaurant an authenticated admin request acts on, and pins it
@@ -25,12 +26,26 @@ export const resolveTenant = asyncHandler(async (req, _res, next) => {
 });
 
 /**
- * Public (customer-facing) counterpart: identifies the restaurant from its slug.
- * Each deployed customer app ships with its own slug baked into the build.
+ * Public (customer-facing) counterpart: works out which restaurant the visitor
+ * is looking at.
+ *
+ * One customer-app deployment serves every restaurant, so the host the visitor
+ * arrived on is what identifies them. An explicit slug still wins, which is what
+ * makes local development and one-off testing possible against a single API.
  */
 export const resolvePublicTenant = asyncHandler(async (req, _res, next) => {
-  const slug = req.params.slug || req.header('x-restaurant-slug') || req.query.restaurant;
-  if (!slug) throw ApiError.badRequest('Restaurant not specified');
+  const explicit = req.params.slug || req.header('x-restaurant-slug') || req.query.restaurant;
+
+  const hostname = requestHostname(req);
+  const slug = explicit || (await slugForHostname(hostname));
+
+  if (!slug) {
+    throw ApiError.notFound(
+      hostname
+        ? `No restaurant is configured for ${hostname}`
+        : 'Restaurant not specified'
+    );
+  }
 
   const restaurant = await prisma.restaurant.findUnique({ where: { slug } });
   if (!restaurant) throw ApiError.notFound('Restaurant not found');

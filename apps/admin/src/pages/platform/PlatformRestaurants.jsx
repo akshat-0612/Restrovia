@@ -22,6 +22,7 @@ export default function PlatformRestaurants({ standalone = false }) {
   const stats = useApi((signal) => api.platformStats(signal), []);
   const list = useApi((signal) => api.platformRestaurants(signal), []);
   const [creating, setCreating] = useState(false);
+  const [domainsFor, setDomainsFor] = useState(null);
 
   if (stats.loading || list.loading) return <Spinner label="Loading the platform…" />;
   if (stats.error) return <ErrorState message={stats.error} onRetry={stats.reload} />;
@@ -93,7 +94,7 @@ export default function PlatformRestaurants({ standalone = false }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Restaurant</th><th>Slug</th><th>Plan</th>
+                <th>Restaurant</th><th>Storefront</th><th>Plan</th>
                 <th className="num">Orders</th><th className="num">Lifetime revenue</th>
                 <th className="num">Menu</th><th>Status</th><th />
               </tr>
@@ -110,7 +111,22 @@ export default function PlatformRestaurants({ standalone = false }) {
                       </div>
                     </div>
                   </td>
-                  <td className="mono muted">/{restaurant.slug}</td>
+                  <td>
+                    <button className="domain-cell" onClick={() => setDomainsFor(restaurant)}>
+                      {restaurant.domains.length > 0 ? (
+                        <>
+                          <span className="mono">{restaurant.domains[0].hostname}</span>
+                          {restaurant.domains.length > 1 && (
+                            <span className="domain-more">+{restaurant.domains.length - 1}</span>
+                          )}
+                        </>
+                      ) : restaurant.platformHost ? (
+                        <span className="mono muted">{restaurant.platformHost}</span>
+                      ) : (
+                        <span className="domain-none">Add a domain</span>
+                      )}
+                    </button>
+                  </td>
                   <td><span className={`plan-pill plan-${restaurant.plan.toLowerCase()}`}>{restaurant.plan}</span></td>
                   <td className="num">{formatNumber(restaurant.orderCount)}</td>
                   <td className="num strong">{formatCurrency(restaurant.lifetimeRevenue, restaurant.currencySymbol, { compact: true })}</td>
@@ -124,6 +140,7 @@ export default function PlatformRestaurants({ standalone = false }) {
                   </td>
                   <td className="row-actions">
                     <button className="link-btn" onClick={() => open(restaurant)}>Open portal</button>
+                    <button className="link-btn" onClick={() => setDomainsFor(restaurant)}>Domains</button>
                     <button className="link-btn" onClick={() => toggleActive(restaurant)}>
                       {restaurant.isActive ? 'Suspend' : 'Reactivate'}
                     </button>
@@ -139,7 +156,105 @@ export default function PlatformRestaurants({ standalone = false }) {
         <OnboardModal onClose={() => setCreating(false)}
           onCreated={() => { setCreating(false); list.reload(); stats.reload(); }} />
       )}
+
+      {domainsFor && (
+        <DomainsModal
+          restaurant={list.data.restaurants.find((r) => r.id === domainsFor.id) ?? domainsFor}
+          onClose={() => setDomainsFor(null)}
+          onChanged={list.reload}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Domains are how a visitor's browser is matched to a restaurant — one customer-app
+ * deployment answers on all of them. Every restaurant also has a platform subdomain
+ * that works with no DNS setup at all.
+ */
+function DomainsModal({ restaurant, onClose, onChanged }) {
+  const toast = useToast();
+  const [hostname, setHostname] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function add(e) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.addDomain(restaurant.id, {
+        hostname: hostname.trim(),
+        isPrimary: restaurant.domains.length === 0,
+      });
+      setHostname('');
+      toast.success('Domain attached');
+      onChanged();
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  async function remove(domain) {
+    try {
+      await api.removeDomain(domain.id);
+      toast.success(`${domain.hostname} detached`);
+      onChanged();
+    } catch (err) { toast.error(err.message); }
+  }
+
+  return (
+    <Modal
+      title={`${restaurant.name} — domains`}
+      subtitle="Where this restaurant's customers place orders"
+      onClose={onClose}
+      width={520}
+      footer={<button className="btn btn-primary" onClick={onClose}>Done</button>}
+    >
+      {restaurant.platformHost && (
+        <div className="domain-default">
+          <div>
+            <strong className="mono">{restaurant.platformHost}</strong>
+            <span>Always works — no DNS needed</span>
+          </div>
+          <span className="pill-good">Built in</span>
+        </div>
+      )}
+
+      {restaurant.domains.length > 0 && (
+        <ul className="domain-list">
+          {restaurant.domains.map((domain) => (
+            <li key={domain.id}>
+              <span className="mono">{domain.hostname}</span>
+              {domain.isPrimary && <span className="pill-good">Primary</span>}
+              <button className="link-btn danger" onClick={() => remove(domain)}>Detach</button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form className="form" onSubmit={add} style={{ marginTop: '1rem' }}>
+        <div className="field">
+          <label>Add a custom domain</label>
+          <div className="domain-add">
+            <input
+              value={hostname}
+              onChange={(e) => { setHostname(e.target.value); setError(null); }}
+              placeholder="order.theirrestaurant.com"
+              className="mono"
+            />
+            <button type="submit" className="btn btn-ghost" disabled={busy || !hostname.trim()}>
+              {busy ? 'Adding…' : 'Attach'}
+            </button>
+          </div>
+          <span className="field-hint">
+            Have the owner point a CNAME at your customer-app deployment, then attach it here.
+            It starts working immediately — no redeploy.
+          </span>
+        </div>
+        {error && <p className="form-error">{error}</p>}
+      </form>
+    </Modal>
   );
 }
 
@@ -152,7 +267,7 @@ function OnboardModal({ onClose, onCreated }) {
     name: '', slug: '', slugTouched: false, tagline: '', logoEmoji: '🍽️',
     primaryColor: '#e8552d', city: '', phone: '', taxPercent: 5,
     plan: 'STARTER', ownerName: '', ownerEmail: '', ownerPassword: '',
-    tableCount: 10, seedStarterMenu: true,
+    tableCount: 10, seedStarterMenu: true, domain: '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -185,6 +300,7 @@ function OnboardModal({ onClose, onCreated }) {
         ownerName: form.ownerName.trim(), ownerEmail: form.ownerEmail.trim(),
         ownerPassword: form.ownerPassword,
         tableCount: Number(form.tableCount), seedStarterMenu: form.seedStarterMenu,
+        domain: form.domain.trim() || undefined,
       });
       setCreated({ ...result, ownerEmail: form.ownerEmail.trim(), ownerPassword: form.ownerPassword });
       toast.success(`${form.name} is live`);
@@ -202,13 +318,15 @@ function OnboardModal({ onClose, onCreated }) {
 Email:    {created.ownerEmail}
 Password: {created.ownerPassword}</pre>
 
-          <h3>Customer app deployment</h3>
-          <pre className="code-block">VITE_RESTAURANT_SLUG={created.restaurant.slug}
-VITE_API_URL={import.meta.env.VITE_API_URL || 'https://your-api-domain.com'}</pre>
+          <h3>Their storefront</h3>
+          <pre className="code-block">{created.platformHost
+            ? `https://${created.platformHost}`
+            : `(set PLATFORM_DOMAIN on the API to get a built-in address)`}</pre>
 
           <p className="field-hint">
-            Build the customer app with those variables and deploy it to the client&apos;s domain.
-            Nothing else needs to change — the menu, branding and tax all come from the database.
+            This works now — no deployment and no DNS. To use the client&apos;s own domain,
+            have them point a CNAME at your customer-app deployment and attach it under
+            Domains. One deployment serves every restaurant.
           </p>
         </div>
       </Modal>
@@ -298,6 +416,12 @@ VITE_API_URL={import.meta.env.VITE_API_URL || 'https://your-api-domain.com'}</pr
           <div className="field">
             <label>Tables to create</label>
             <input type="number" min="0" max="60" value={form.tableCount} onChange={set('tableCount')} />
+          </div>
+          <div className="field">
+            <label>Custom domain <span className="optional">optional</span></label>
+            <input value={form.domain} onChange={set('domain')} className="mono"
+              placeholder="order.theirrestaurant.com" />
+            <span className="field-hint">Can be added later.</span>
           </div>
         </div>
         <label className="checkbox">
