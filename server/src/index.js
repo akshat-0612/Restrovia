@@ -19,6 +19,7 @@ import exportsRoutes from './routes/admin/exports.js';
 import { requireAuth } from './middleware/auth.js';
 import { resolveTenant } from './middleware/tenant.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { ApiError } from './lib/errors.js';
 import { prisma } from './lib/prisma.js';
 
 const app = express();
@@ -41,7 +42,12 @@ app.use(cors({
     if (process.env.NODE_ENV !== 'production' && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
-    callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    // A rejected origin is a configuration mistake, not a server fault. Returning
+    // a plain Error here would surface as a 500 and log a stack trace for every
+    // blocked request, burying real errors while saying nothing useful.
+    callback(ApiError.forbidden(
+      `Origin ${origin} is not allowed. Add it to CORS_ORIGINS on the API.`
+    ));
   },
   credentials: true,
 }));
