@@ -102,7 +102,6 @@ const loginLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { keyGeneratorIpFallback: false },
 });
 
 /**
@@ -117,7 +116,6 @@ const loginSprayLimiter = rateLimit({
   message: { error: 'Too many failed sign-in attempts from this network. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { keyGeneratorIpFallback: false },
 });
 
 app.use('/api/auth/login', loginLimiter, loginSprayLimiter);
