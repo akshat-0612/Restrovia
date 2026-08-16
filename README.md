@@ -402,12 +402,26 @@ megabytes arrives as roughly 40–70KB — a hundred dishes is single-digit mega
 against Neon's free 500MB. Keeping them in the database means no second service to
 run, no credentials to hold, and backups that actually contain the images.
 
-Two things would change that calculation. If storage grows past a few hundred
+Measured against real data, storage costs roughly:
+
+| | Size | How many fit in Neon's free 500MB |
+|---|---|---|
+| An order, with its items and history | ~1.6 KB | ~316,000 |
+| A cropped photo | ~50 KB | ~10,000 |
+| A restaurant's menu, tables and staff | ~200 KB | — |
+
+**Orders are what actually fills the database, not photos.** A restaurant's entire
+photo set is a one-off ~2MB; fifty orders a day is ~2.4MB every month, so trading
+overtakes all its images inside a month. Ten restaurants at fifty orders a day fill
+the free tier in about 20 months.
+
+Two things would change the calculation. If storage grows past a few hundred
 megabytes, or if serving image bytes from a sleeping free-tier API starts hurting,
 move the bytes to object storage — **Cloudflare R2** is the natural fit, since the
 frontends are already there and its free tier charges nothing for egress. Only the
 upload route and the URL helper would need to change: everything else already refers
-to images by id.
+to images by id. Note that this buys headroom rather than solving it: the orders
+keep accruing, and archiving old ones is the lever that matters at that point.
 
 ### Known limits of the free tier
 

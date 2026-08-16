@@ -224,9 +224,11 @@ function ItemModal({ mode, initial, categories, symbol, onClose, onSaved }) {
     basePrice: initial.basePrice ?? '',
     description: initial.description ?? '',
     // An item may carry an upload, an older external URL, or neither.
+    // An uploaded image already carries its own url; imageUrl is the legacy
+    // external field and is null for uploads, so spreading it over the top blanked
+    // the preview every time the form was reopened.
     image: initial.image
-      ? { ...initial.image, url: initial.imageUrl }
-      : initial.imageUrl ? { url: initial.imageUrl, legacy: true } : null,
+      ?? (initial.imageUrl ? { url: initial.imageUrl, legacy: true } : null),
     variants: (initial.variants ?? []).map((v) => ({ label: v.label, price: String(v.price) })),
   }));
   const [busy, setBusy] = useState(false);

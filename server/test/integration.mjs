@@ -208,6 +208,12 @@ ok((await call(`/admin/images/${imageId}`, { token: rival, method: 'DELETE' })).
 const withImage = await call('/admin/menu/items', { token: owner, method: 'POST',
   body: { name: 'Test Photo Dish', categoryId: cat.id, basePrice: 55, imageId } });
 ok(withImage.json.item?.image?.url, 'an item carries its image URL for the admin');
+
+// The edit form reads the item back off the list, so the URL has to survive that
+// round trip — it did not, and the form came up blank on every reopen.
+const listed = (await call('/admin/menu/items', { token: owner })).json.items
+  .find((i) => i.id === withImage.json.item.id);
+ok(listed?.image?.url, 'and again when the item is listed, which is what the edit form reads');
 const publicMenu = (await call('/public/menu?restaurant=delight-food')).json;
 const shown = publicMenu.categories.flatMap((c) => c.items).find((i) => i.name === 'Test Photo Dish');
 ok(/\/api\/public\/images\//.test(shown?.imageUrl || ''), 'and the customer menu serves it');
