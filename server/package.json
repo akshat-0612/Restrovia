@@ -15,7 +15,8 @@
     "db:reset": "prisma migrate reset --force",
     "test:api": "node test/integration.mjs",
     "generate": "prisma generate",
-    "create:admin": "node scripts/create-platform-admin.js"
+    "create:admin": "node scripts/create-platform-admin.js",
+    "check:db": "node scripts/check-db.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
