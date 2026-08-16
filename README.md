@@ -278,32 +278,60 @@ import('bcryptjs').then(async ({default:bcrypt}) => {
 
 ### 3. Frontends — Cloudflare Pages
 
-Two projects, both pointed at the same repository, differing only in build command
-and output directory.
+Two Pages projects, both pointed at the same repository, differing only in build
+command and output directory.
 
-**Admin portal:**
+**Use the Git integration, not a deploy command.** Connect the repo to a Pages
+project and Cloudflare builds *and* publishes the output itself — no `wrangler`, no
+API token, nothing to authenticate. The Workers-style "deploy command" field is for
+Workers; pointing `wrangler pages deploy` at a project that does not exist yet fails
+with `Project not found [code: 8000007]`, and pointing it at one you do own still
+needs an API token carrying **Account · Cloudflare Pages · Edit** (an account role of
+Super Administrator does not grant this — a token is scoped separately).
 
-| Setting | Value |
-|---|---|
-| Build command | `npm ci && npm run build:admin` |
-| Output directory | `apps/admin/dist` |
-| `VITE_API_URL` | your Render URL, e.g. `https://restrovia-api.onrender.com` |
-| `VITE_CUSTOMER_URL` | the customer domain (used to build table QR codes) |
-| `NODE_VERSION` | `20` |
+| Setting | Admin portal | Customer app |
+|---|---|---|
+| Build command | `npm run build:admin` | `npm run build:customer` |
+| Build output directory | `apps/admin/dist` | `apps/customer/dist` |
+| Deploy command | *(leave empty)* | *(leave empty)* |
+| Root directory | *(blank — repo root)* | *(blank — repo root)* |
 
-**Customer app:**
+Environment variables:
 
-| Setting | Value |
-|---|---|
-| Build command | `npm ci && npm run build:customer` |
-| Output directory | `apps/customer/dist` |
-| `VITE_API_URL` | your Render URL |
-| `VITE_RESTAURANT_SLUG` | **leave unset** — the API resolves the restaurant from the domain |
-| `NODE_VERSION` | `20` |
+| Key | Admin portal | Customer app |
+|---|---|---|
+| `VITE_API_URL` | your Render URL | your Render URL |
+| `VITE_CUSTOMER_URL` | the customer domain (builds table QR codes) | — |
+| `NODE_VERSION` | `20` | `20` |
+
+**Do not put `npm ci` in the build command.** Cloudflare installs dependencies
+before running it — the log line is `Installing project dependencies: npm
+clean-install`. Adding your own repeats the whole install and roughly doubles build
+time for nothing. Render is the opposite: it runs only the build command, so its
+`npm ci` is required.
 
 Both apps ship a `public/_redirects` containing `/* /index.html 200`. Without it a
 static host returns 404 for `/orders` or any refreshed deep link, because it looks
 for a file rather than handing the path to the router.
+
+<details>
+<summary>If you would rather upload from CI than connect Git</summary>
+
+Direct Upload needs the project to exist first — `wrangler pages deploy` only
+uploads into an existing one:
+
+```bash
+npx wrangler pages project create restrovia-admin --production-branch=main
+npx wrangler pages project create restrovia-order --production-branch=main
+```
+
+Then deploy with `npx wrangler pages deploy apps/admin/dist --project-name=restrovia-admin`,
+with `CLOUDFLARE_API_TOKEN` carrying **Account · Cloudflare Pages · Edit**. Note that
+environment variables are not applied to a Direct Upload build the way they are with
+the Git integration, so `VITE_*` values must be present in the shell that runs the
+build.
+
+</details>
 
 ### One customer deployment, many restaurants
 
