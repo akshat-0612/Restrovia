@@ -203,207 +203,190 @@ terminal, and cancelling requires a reason.
 
 ## Deploying
 
-One repository, three deployment targets. Nothing is split into separate repos —
-each host builds the whole tree and is told which workspace to produce.
+Three things get deployed, all from this one repository:
 
 | What | Where | Cost |
 |---|---|---|
-| Customer app | Cloudflare Pages (static) | free |
-| Admin portal | Cloudflare Pages (static) | free |
-| API | Render web service | free tier, or ~$5/mo to avoid cold starts |
-| Database | Neon (Postgres) | free |
+| API | Render web service | free |
+| Database | Neon Postgres | free |
+| Admin portal | Cloudflare Pages | free |
+| Customer app | Cloudflare Pages — one project per restaurant | free |
 
-### The monorepo rule
+**No domain purchase is required.** Cloudflare gives every Pages project a free
+`<name>.pages.dev` address, and that is enough to run the whole platform. A domain
+only becomes worth buying later; see *When a domain is worth buying* at the end.
 
-**Every host must build from the repository root, not from a subdirectory.**
-npm workspaces hoist `node_modules` to the root, and the frontends resolve
-`@shared` through a relative path into `packages/shared`. A build that only sees
-`apps/customer` has neither. So leave "root directory" blank everywhere and let the
-build command pick the target.
+### The one rule that trips people up
 
-### 1. Database — Neon
+**Every host must build from the repository root, never a subdirectory.** npm
+workspaces hoist `node_modules` to the root, and the frontends resolve `@shared`
+through a relative path into `packages/shared`. A build scoped to `apps/customer`
+has neither. Leave "root directory" blank everywhere and let the build command pick
+the target.
 
-Create a project and take the **pooled** connection string (the one containing
-`-pooler`). Prisma opens a connection per instance and will exhaust a direct
-connection limit:
+---
+
+### Step 1 · Database (Neon)
+
+Create a project and copy the **pooled** connection string — the one containing
+`-pooler`. Prisma opens a connection per instance and will exhaust a direct limit:
 
 ```
-DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/restrovia?sslmode=require&pgbouncer=true&connection_limit=1"
+postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require&pgbouncer=true&connection_limit=1
 ```
 
-### 2. API — Render
+### Step 2 · API (Render)
 
-There is a `render.yaml` blueprint in the repo, or configure it by hand:
+New Web Service → connect this repo. There is a `render.yaml` blueprint, or set it
+by hand:
 
 | Setting | Value |
 |---|---|
-| Root directory | *(blank — repo root)* |
+| Root directory | *(blank)* |
 | Build command | `npm ci && npm run build:server` |
 | Start command | `npm run start:server` |
 | Health check path | `/api/health` |
 
-`build:server` generates the Prisma client and applies pending migrations. Render's
-free tier has no separate release phase, so migrations ride along with the build.
-
-Environment variables:
-
-| Key | Value |
+| Variable | Value |
 |---|---|
 | `DATABASE_URL` | the pooled Neon string |
-| `JWT_SECRET` | a long random string — generate a fresh one, never reuse the dev value |
-| `CORS_ORIGINS` | the admin portal URL. Restaurant domains resolve from the database and are not listed here |
-| `PLATFORM_DOMAIN` | e.g. `restrovia.app` — every restaurant gets `<slug>.<this>` for free |
+| `JWT_SECRET` | a long random string — never reuse the dev value |
 | `NODE_ENV` | `production` |
 | `NODE_VERSION` | `20` |
+| `CORS_ORIGINS` | leave empty for now; filled in at step 5 |
 
-Render sets `PORT` itself, and the server already reads it.
+The build applies migrations. Render sets `PORT` itself. Note the service URL, e.g.
+`https://restrovia.onrender.com` — every frontend points at it.
 
-Seed nothing in production. Create your first restaurant through the platform
-admin screen instead — `db:seed` deletes and recreates the seeded tenants.
-To create the very first platform-admin account, run this once against the
-production database from your machine:
+### Step 3 · Your platform-admin account
 
-```bash
-DATABASE_URL="<neon-pooled-url>" node -e "
-import('bcryptjs').then(async ({default:bcrypt}) => {
-  const {PrismaClient} = await import('@prisma/client');
-  const db = new PrismaClient();
-  await db.user.create({ data: {
-    name: 'Platform Admin', email: 'you@yourdomain.com', role: 'PLATFORM_ADMIN',
-    passwordHash: await bcrypt.hash('<a-strong-password>', 10),
-  }});
-  console.log('created'); await db.\$disconnect();
-})"
-```
-
-### 3. Frontends — Cloudflare Pages
-
-Two Pages projects, both pointed at the same repository, differing only in build
-command and output directory.
-
-**Use the Git integration, not a deploy command.** Connect the repo to a Pages
-project and Cloudflare builds *and* publishes the output itself — no `wrangler`, no
-API token, nothing to authenticate. The Workers-style "deploy command" field is for
-Workers; pointing `wrangler pages deploy` at a project that does not exist yet fails
-with `Project not found [code: 8000007]`, and pointing it at one you do own still
-needs an API token carrying **Account · Cloudflare Pages · Edit** (an account role of
-Super Administrator does not grant this — a token is scoped separately).
-
-| Setting | Admin portal | Customer app |
-|---|---|---|
-| Build command | `npm run build:admin` | `npm run build:customer` |
-| Build output directory | `apps/admin/dist` | `apps/customer/dist` |
-| Deploy command | *(leave empty)* | *(leave empty)* |
-| Root directory | *(blank — repo root)* | *(blank — repo root)* |
-
-Environment variables:
-
-| Key | Admin portal | Customer app |
-|---|---|---|
-| `VITE_API_URL` | your Render URL | your Render URL |
-| `VITE_CUSTOMER_URL` | the customer domain (builds table QR codes) | — |
-| `NODE_VERSION` | `20` | `20` |
-
-**Do not put `npm ci` in the build command.** Cloudflare installs dependencies
-before running it — the log line is `Installing project dependencies: npm
-clean-install`. Adding your own repeats the whole install and roughly doubles build
-time for nothing. Render is the opposite: it runs only the build command, so its
-`npm ci` is required.
-
-Both apps ship a `public/_redirects` containing `/* /index.html 200`. Without it a
-static host returns 404 for `/orders` or any refreshed deep link, because it looks
-for a file rather than handing the path to the router.
-
-<details>
-<summary>If you would rather upload from CI than connect Git</summary>
-
-Direct Upload needs the project to exist first — `wrangler pages deploy` only
-uploads into an existing one:
+Never run `db:seed` against production — it deletes and recreates the seeded
+tenants. Create your own login once, from your machine:
 
 ```bash
-npx wrangler pages project create restrovia-admin --production-branch=main
-npx wrangler pages project create restrovia-order --production-branch=main
+DATABASE_URL="<pooled-neon-url>" \
+ADMIN_EMAIL="you@yourdomain.com" \
+ADMIN_PASSWORD="<a-strong-password>" \
+  npm run create:admin -w server
 ```
 
-Then deploy with `npx wrangler pages deploy apps/admin/dist --project-name=restrovia-admin`,
-with `CLOUDFLARE_API_TOKEN` carrying **Account · Cloudflare Pages · Edit**. Note that
-environment variables are not applied to a Direct Upload build the way they are with
-the Git integration, so `VITE_*` values must be present in the shell that runs the
-build.
+### Step 4 · Admin portal (Cloudflare Pages)
 
-</details>
+Workers & Pages → Create → at the bottom, **"Looking to deploy Pages? Get started"**
+→ Connect to Git. The Workers flow has no "build output directory" field; the Pages
+flow does.
 
-### One customer deployment, many restaurants
+| Setting | Value |
+|---|---|
+| Project name | `restrovia-admin` |
+| Framework preset | `None` |
+| Build command | `npm run build:admin` |
+| Build output directory | `apps/admin/dist` |
+| Root directory | *(blank)* |
 
-There is **one** customer-app project no matter how many restaurants you sell to.
-Which one a visitor sees is decided by the host they arrived on, resolved by the API:
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | your Render URL, no trailing slash |
+| `NODE_VERSION` | `20` |
 
-1. an explicit slug, if the build is pinned to one (development, one-off builds)
-2. a custom domain attached to a restaurant
-3. a subdomain of `PLATFORM_DOMAIN` — `delight-food.restrovia.app` → `delight-food`
+Do **not** put `npm ci` in a Cloudflare build command — Cloudflare installs
+dependencies before running it, so adding your own doubles build time. Render is the
+opposite and needs it.
 
-Point a wildcard CNAME (`*.restrovia.app`) at the customer-app deployment and every
-restaurant has a working storefront the moment it is created — no DNS, no build, no
-redeploy. A client who wants their own domain points a CNAME at the same deployment,
-and you attach it under **Domains** on the platform screen; it works on the next
-request.
+### Step 5 · Let the admin portal talk to the API
 
-`CORS_ORIGINS` no longer grows with each sale. Any host that resolves to a restaurant
-is allowed by definition, so the list is only for things that aren't storefronts —
-chiefly the admin portal.
+Set `CORS_ORIGINS` on Render to the admin URL and redeploy:
 
-### Order of operations
+```
+https://restrovia-admin.pages.dev
+```
 
-1. Create the Neon database.
-2. Deploy the API to Render with `DATABASE_URL` and `JWT_SECRET` (leave `CORS_ORIGINS` empty for now) — the build applies migrations.
-3. Create the platform-admin account with the snippet above.
-4. Deploy the admin portal to Pages with `VITE_API_URL`.
-5. Set `CORS_ORIGINS` on Render to the admin URL and redeploy.
-6. Sign in and onboard your first restaurant. Note its slug.
-7. Deploy the customer app to Pages. Cloudflare gives it a free
-   `<project>.pages.dev` address — no domain needed.
-8. Tell the API which restaurant that address belongs to, by either route below.
-9. Add the customer URL to `CORS_ORIGINS` on Render and redeploy.
+Sign in. A blank screen with a 403 in the console saying *"Origin … is not allowed"*
+means this step was missed.
 
-### Pointing an address at a restaurant
+### Step 6 · Onboard your first restaurant
 
-The storefront has to know which restaurant a visitor is asking for. **Owning a
-domain is not required for this** — pick whichever route fits.
+In the admin portal, **All restaurants → Onboard restaurant**. Note the **slug** it
+generates — lowercase and hyphenated, e.g. `Delight Food` becomes `delight-food`.
+That slug is permanent.
 
-**A · Register the free Pages address as the restaurant's domain.** In the platform
-admin, open the restaurant and add `restrovia-order.pages.dev` under **Domains**.
-The API resolves the restaurant from the request host and the storefront works
-immediately. Costs nothing.
+### Step 7 · Customer app (Cloudflare Pages)
 
-**B · Pin the deployment to one restaurant.** Set `VITE_RESTAURANT_SLUG=<slug>` on
-that Pages project. The build carries the slug and never consults the host. Also
-free, and the simplest thing to reason about.
+A second Pages project, same repository:
 
-Both give one restaurant per Pages project. Pages projects are free and you can
-create as many as you have clients, so **the whole platform runs at zero cost** —
-you just repeat step 7 per restaurant.
+| Setting | Value |
+|---|---|
+| Project name | `delight-food-order` |
+| Build command | `npm run build:customer` |
+| Build output directory | `apps/customer/dist` |
 
-### When a domain becomes worth buying
+| Variable | Value |
+|---|---|
+| `VITE_API_URL` | the same Render URL |
+| `VITE_RESTAURANT_SLUG` | **that restaurant's slug**, e.g. `delight-food` |
+| `NODE_VERSION` | `20` |
 
-One domain (around ₹800/year) buys two things, neither of them required to run:
+`VITE_RESTAURANT_SLUG` is what lets this work on a free `.pages.dev` address. It
+pins the build to one restaurant so the API never has to identify one from the
+domain.
 
-- **Branded URLs.** `order.theirrestaurant.com` instead of `xyz-order.pages.dev`,
-  which matters more for selling than for working.
+### Step 8 · Tell the restaurant where its storefront lives
+
+In the admin portal, **Settings → Storefront**, set the storefront URL to the
+address from step 7:
+
+```
+https://delight-food-order.pages.dev
+```
+
+Table QR codes are built from this. The admin portal is shared by every restaurant,
+so each one carries its own value — get it right before printing codes, or you will
+be reprinting them.
+
+### Step 9 · Allow the storefront to call the API
+
+Add the customer URL to `CORS_ORIGINS` on Render and redeploy. The list grows by one
+entry per restaurant:
+
+```
+https://restrovia-admin.pages.dev,https://delight-food-order.pages.dev
+```
+
+---
+
+### Adding your next restaurant
+
+The API, database and admin portal are shared and never touched again. Per new
+client, repeat four steps:
+
+1. **Step 6** — onboard in the admin portal, note the slug.
+2. **Step 7** — new Pages project with that slug in `VITE_RESTAURANT_SLUG`.
+3. **Step 8** — set that restaurant's storefront URL.
+4. **Step 9** — add its URL to `CORS_ORIGINS` and redeploy the API.
+
+Step 9 is the one that gets forgotten; the symptom is a storefront that loads but
+whose every request fails.
+
+### When a domain is worth buying
+
+Around ₹800/year, and it buys convenience rather than capability:
+
+- **Branded URLs** — `order.theirrestaurant.com` rather than `xyz.pages.dev`.
 - **One deployment for every client.** Point a wildcard CNAME (`*.yourdomain`) at a
-  single customer Pages project and set `PLATFORM_DOMAIN` on the API to match. Each
-  new restaurant is then live at `<slug>.yourdomain` the moment you onboard it — no
-  new project, no new build. Onboarding collapses to one form submission.
+  single customer Pages project and set `PLATFORM_DOMAIN` on the API. Leave
+  `VITE_RESTAURANT_SLUG` unset; the API then identifies the restaurant from the
+  subdomain it was reached on. Onboarding collapses to step 6 alone — no new
+  project, no CORS edit, no redeploy.
 
-Until you have several clients, route A or B is genuinely fine. Revisit this when
-repeating step 7 starts to annoy you.
+Worth doing when repeating those four steps starts to annoy you. Not before.
 
 ### Custom domains for a client
 
-Once you do own a domain, add the client's hostname to the customer Pages project,
-have them point a CNAME at it, then attach it to their restaurant under **Domains**.
-Keep the deployment in **your** Cloudflare account rather than theirs: one place to
-ship fixes, your source stays yours, and suspending a non-paying client is an
-`isActive` toggle on their restaurant row rather than a negotiation.
+Once you own a domain, add the client's hostname to the customer Pages project, have
+them point a CNAME at it, then attach it to their restaurant under **Domains** and
+update their storefront URL. Keep the deployment in **your** Cloudflare account, not
+theirs: one place to ship fixes, your source stays yours, and suspending a
+non-paying client is an `isActive` toggle rather than a negotiation.
 
 ### Known limits of the free tier
 

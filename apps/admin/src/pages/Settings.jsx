@@ -100,6 +100,29 @@ export default function Settings() {
         </div>
       </Card>
 
+      <Card title="Storefront" subtitle="Where your customers order — used for table QR codes"
+        action={<button className="btn btn-primary btn-sm" disabled={busy}
+          onClick={() => save(['storefrontUrl'])}>Save</button>}>
+        <div className="form">
+          <div className="field">
+            <label>Storefront URL</label>
+            <input value={form.storefrontUrl ?? ''} onChange={set('storefrontUrl')}
+              placeholder="https://your-restaurant.pages.dev" className="mono" />
+            <span className="field-hint">
+              The address customers visit. Every table QR code is built from it, so
+              printing codes before this is right means reprinting them.
+            </span>
+          </div>
+          {form.domains?.length > 0 && (
+            <p className="field-hint">
+              Registered domains for this restaurant:{' '}
+              {form.domains.map((d) => d.hostname).join(', ')} — used automatically if
+              you leave the field blank.
+            </p>
+          )}
+        </div>
+      </Card>
+
       <Card title="Branding" subtitle="Colours and logo used across your customer app"
         action={<button className="btn btn-primary btn-sm" disabled={busy}
           onClick={() => save(['logoEmoji', 'logoUrl', 'primaryColor', 'accentColor'])}>Save</button>}>

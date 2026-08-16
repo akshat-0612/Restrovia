@@ -158,6 +158,25 @@ ok((await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH',
 const renamed = await call(`/admin/menu/items/${flat.id}`, { token: owner, method: 'PATCH', body: { name: 'Test Renamed' } });
 ok(renamed.status === 200 && renamed.json.item.name === 'Test Renamed', 'partial update of a single field works');
 
+console.log('\n── STOREFRONT URL (per restaurant) ──');
+// One admin portal serves every restaurant, so this cannot be a build-time
+// constant — each restaurant's QR codes must point at its own storefront.
+const sfSaved = await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { storefrontUrl: 'https://delight-food.pages.dev/' } });
+ok(sfSaved.json.restaurant.storefrontUrl === 'https://delight-food.pages.dev',
+  'storefront URL saves with the trailing slash stripped');
+ok((await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { storefrontUrl: 'not-a-url' } })).status === 400, 'a bare hostname is rejected');
+
+const rivalSf = await call('/admin/settings', { token: rival, method: 'PATCH',
+  body: { storefrontUrl: 'https://urban-slice.pages.dev' } });
+ok(rivalSf.json.restaurant.storefrontUrl === 'https://urban-slice.pages.dev',
+  'a second restaurant keeps its own storefront URL');
+ok((await call('/admin/settings', { token: owner })).json.restaurant.storefrontUrl
+   === 'https://delight-food.pages.dev', "and does not overwrite the first restaurant's");
+ok(Array.isArray((await call('/admin/settings', { token: owner })).json.restaurant.domains),
+  'settings carries the registered domains for the QR fallback');
+
 console.log('\n── ACCEPTING-ORDERS SWITCH ──');
 // Also establishes the precondition the lifecycle tests below depend on, rather
 // than assuming whatever state the restaurant happened to be left in.

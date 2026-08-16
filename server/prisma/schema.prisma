@@ -25,6 +25,13 @@ model Restaurant {
   // is a config change rather than a code change.
   logoEmoji    String  @default("🍽️")
   logoUrl      String?
+
+  /// Where this restaurant's customers actually order, e.g.
+  /// "https://delight-food.pages.dev". The admin portal is shared by every
+  /// restaurant, so a build-time constant cannot stand in for this — each
+  /// restaurant's table QR codes have to point at its own storefront.
+  /// Falls back to the primary domain when one is registered.
+  storefrontUrl String?
   primaryColor String  @default("#e8552d")
   accentColor  String  @default("#f5b301")
 

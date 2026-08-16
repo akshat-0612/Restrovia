@@ -831,3 +831,15 @@ textarea { resize: vertical; }
 .domain-add { display: flex; gap: 0.5rem; }
 .domain-add input { flex: 1; }
 .domain-add .btn { white-space: nowrap; }
+
+/* Printing a QR that points at the wrong storefront means reprinting every table. */
+.qr-warning {
+  font-size: 0.75rem; line-height: 1.5; text-align: left;
+  color: var(--warning); padding: 0.6rem 0.7rem; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+}
+.qr-warning code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}

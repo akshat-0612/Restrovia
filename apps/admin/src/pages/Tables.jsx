@@ -6,17 +6,32 @@ import { useToast } from '../components/toast-context';
 import Modal, { ConfirmModal } from '../components/Modal';
 import { EmptyState, ErrorState, Spinner } from '../components/States';
 
-const CUSTOMER_URL = (import.meta.env.VITE_CUSTOMER_URL || 'http://localhost:5173').replace(/\/$/, '');
+/** Last resort only: local development, before any storefront URL is configured. */
+const DEV_FALLBACK = (import.meta.env.VITE_CUSTOMER_URL || 'http://localhost:5173').replace(/\/+$/, '');
+
+/**
+ * Where this restaurant's customers order.
+ *
+ * This cannot be a build-time constant: one admin portal serves every restaurant,
+ * so a single baked-in URL would print another restaurant's storefront onto these
+ * QR codes. Prefer what the owner configured, then the primary registered domain.
+ */
+function storefrontBase(restaurant) {
+  if (restaurant?.storefrontUrl) return restaurant.storefrontUrl.replace(/\/+$/, '');
+  const primary = restaurant?.domains?.find((d) => d.isPrimary) ?? restaurant?.domains?.[0];
+  if (primary) return `https://${primary.hostname}`;
+  return DEV_FALLBACK;
+}
 
 /** The URL printed into a table's QR code — scanning it pre-fills the table. */
-const qrUrlFor = (table) => `${CUSTOMER_URL}/?t=${table.qrToken}`;
+const qrUrlFor = (base, table) => `${base}/?t=${table.qrToken}`;
 
 /**
  * QR images come from a public renderer so no client-side QR library ships in the
  * bundle. The token in the URL is not a secret — it only names a table.
  */
-const qrImageFor = (table, size = 220) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(qrUrlFor(table))}`;
+const qrImageFor = (base, table, size = 220) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(qrUrlFor(base, table))}`;
 
 export default function Tables() {
   const { can } = useAuth();
@@ -24,6 +39,11 @@ export default function Tables() {
   const editable = can('PLATFORM_ADMIN', 'OWNER', 'MANAGER');
 
   const { data, loading, error, reload } = useApi((signal) => api.tables(signal), []);
+  const settings = useApi((signal) => api.settings(signal), []);
+  const base = storefrontBase(settings.data?.restaurant);
+  const storefrontConfigured = Boolean(
+    settings.data?.restaurant?.storefrontUrl || settings.data?.restaurant?.domains?.length
+  );
   const [modal, setModal] = useState(null);
   const [qrTable, setQrTable] = useState(null);
   const [deleting, setDeleting] = useState(null);
@@ -136,11 +156,17 @@ export default function Tables() {
           }
         >
           <div className="qr-block">
-            <img src={qrImageFor(qrTable)} alt={`QR code for table ${qrTable.label}`} width={220} height={220} />
+            {!storefrontConfigured && (
+              <p className="qr-warning">
+                No storefront URL is set for this restaurant, so this code points at
+                <code> {base}</code>. Set it under Settings → Storefront before printing.
+              </p>
+            )}
+            <img src={qrImageFor(base, qrTable)} alt={`QR code for table ${qrTable.label}`} width={220} height={220} />
             <p className="qr-caption">Scan to order · Table {qrTable.label}</p>
-            <code className="qr-url">{qrUrlFor(qrTable)}</code>
+            <code className="qr-url">{qrUrlFor(base, qrTable)}</code>
             <button className="link-btn" onClick={() => {
-              navigator.clipboard?.writeText(qrUrlFor(qrTable));
+              navigator.clipboard?.writeText(qrUrlFor(base, qrTable));
               toast.success('Link copied');
             }}>Copy link</button>
           </div>
