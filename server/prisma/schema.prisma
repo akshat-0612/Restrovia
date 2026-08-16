@@ -32,6 +32,10 @@ model Restaurant {
   /// restaurant's table QR codes have to point at its own storefront.
   /// Falls back to the primary domain when one is registered.
   storefrontUrl String?
+
+  /// Which printable design the table QR codes use. The owner picks it once and
+  /// every table prints to match, so a café's tents look like the café.
+  qrTheme String @default("classic")
   primaryColor String  @default("#e8552d")
   accentColor  String  @default("#f5b301")
 

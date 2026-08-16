@@ -1,10 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { useAuth } from '../context/auth-context';
 import { useToast } from '../components/toast-context';
 import Modal, { ConfirmModal } from '../components/Modal';
+import TableTent from '../components/TableTent';
+import { TENT_THEMES, HEAVY_INK } from '../components/tent-themes';
 import { EmptyState, ErrorState, Spinner } from '../components/States';
+
+/** Two across, two down — as many as fit on A4 with room to cut them out. */
+const TENTS_PER_PAGE = 4;
+
+const chunk = (items, size) =>
+  items.reduce((pages, item, i) => {
+    if (i % size === 0) pages.push([]);
+    pages[pages.length - 1].push(item);
+    return pages;
+  }, []);
 
 /** Last resort only: local development, before any storefront URL is configured. */
 const DEV_FALLBACK = (import.meta.env.VITE_CUSTOMER_URL || 'http://localhost:5173').replace(/\/+$/, '');
@@ -26,13 +39,6 @@ function storefrontBase(restaurant) {
 /** The URL printed into a table's QR code — scanning it pre-fills the table. */
 const qrUrlFor = (base, table) => `${base}/?t=${table.qrToken}`;
 
-/**
- * QR images come from a public renderer so no client-side QR library ships in the
- * bundle. The token in the URL is not a secret — it only names a table.
- */
-const qrImageFor = (base, table, size = 220) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(qrUrlFor(base, table))}`;
-
 export default function Tables() {
   const { can } = useAuth();
   const toast = useToast();
@@ -41,11 +47,37 @@ export default function Tables() {
   const { data, loading, error, reload } = useApi((signal) => api.tables(signal), []);
   const settings = useApi((signal) => api.settings(signal), []);
   const base = storefrontBase(settings.data?.restaurant);
-  const storefrontConfigured = Boolean(
-    settings.data?.restaurant?.storefrontUrl || settings.data?.restaurant?.domains?.length
-  );
+  const restaurant = settings.data?.restaurant;
+  const storefrontConfigured = Boolean(restaurant?.storefrontUrl || restaurant?.domains?.length);
+
+  // Adopt the saved theme once settings arrive, without stomping a live choice.
+  useEffect(() => {
+    if (restaurant?.qrTheme) setTheme(restaurant.qrTheme);
+  }, [restaurant?.qrTheme]);
+
+  /** Persist the choice so every table prints alike, then hand off to the browser. */
+  async function printTents(which) {
+    setPrinting(which);
+    if (restaurant && theme !== restaurant.qrTheme) {
+      try { await api.updateSettings({ qrTheme: theme }); settings.reload(); }
+      catch { /* printing matters more than remembering the choice */ }
+    }
+    // Let the sheets mount before the dialog snapshots the page. They stay mounted
+    // until afterprint fires — clearing straight after window.print() races the
+    // browser and can hand it an empty page.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+  }
+
+  useEffect(() => {
+    const done = () => setPrinting(null);
+    window.addEventListener('afterprint', done);
+    return () => window.removeEventListener('afterprint', done);
+  }, []);
   const [modal, setModal] = useState(null);
   const [qrTable, setQrTable] = useState(null);
+  /** null = print one table; 'all' = every active table, one per page. */
+  const [printing, setPrinting] = useState(null);
+  const [theme, setTheme] = useState('classic');
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -90,6 +122,11 @@ export default function Tables() {
         </div>
         {editable && (
           <div className="page-actions">
+            {tables.length > 0 && (
+              <button className="btn btn-ghost" onClick={() => printTents('all')}>
+                Print all QR codes
+              </button>
+            )}
             <button className="btn btn-ghost" onClick={() => setModal({ mode: 'bulk' })}>Add several</button>
             <button className="btn btn-primary" onClick={() => setModal({ mode: 'create' })}>+ Add table</button>
           </div>
@@ -143,32 +180,64 @@ export default function Tables() {
       {qrTable && (
         <Modal
           title={`Table ${qrTable.label}`}
-          subtitle="Print this and place it on the table"
+          subtitle="Pick a design, then print and stand it on the table"
           onClose={() => setQrTable(null)}
-          width={380}
+          width={620}
           footer={
             <>
               {can('PLATFORM_ADMIN', 'OWNER', 'MANAGER') && (
-                <button className="btn btn-ghost" onClick={() => regenerate(qrTable)}>Regenerate</button>
+                <button className="btn btn-ghost" onClick={() => regenerate(qrTable)}>Regenerate code</button>
               )}
-              <button className="btn btn-primary" onClick={() => window.print()}>Print</button>
+              <button className="btn btn-primary" onClick={() => printTents(qrTable)}>
+                Print this table
+              </button>
             </>
           }
         >
-          <div className="qr-block">
-            {!storefrontConfigured && (
-              <p className="qr-warning">
-                No storefront URL is set for this restaurant, so this code points at
-                <code> {base}</code>. Set it under Settings → Storefront before printing.
-              </p>
-            )}
-            <img src={qrImageFor(base, qrTable)} alt={`QR code for table ${qrTable.label}`} width={220} height={220} />
-            <p className="qr-caption">Scan to order · Table {qrTable.label}</p>
-            <code className="qr-url">{qrUrlFor(base, qrTable)}</code>
-            <button className="link-btn" onClick={() => {
-              navigator.clipboard?.writeText(qrUrlFor(base, qrTable));
-              toast.success('Link copied');
-            }}>Copy link</button>
+          {!storefrontConfigured && (
+            <p className="qr-warning">
+              No storefront URL is set for this restaurant, so this code points at
+              <code> {base}</code>. Set it under Settings → Storefront before printing.
+            </p>
+          )}
+
+          <div className="qr-layout">
+            <div className="qr-preview-pane">
+              <TableTent restaurant={restaurant} table={qrTable}
+                url={qrUrlFor(base, qrTable)} theme={theme} preview />
+            </div>
+
+            <div className="qr-choices">
+              <span className="block-label">Design</span>
+              <div className="theme-picker">
+                {TENT_THEMES.map((t) => (
+                  <button key={t.id} type="button"
+                    className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                    onClick={() => setTheme(t.id)}>
+                    <span className="theme-swatch" aria-hidden>
+                      <i style={{ background: restaurant?.primaryColor || '#c4451f' }} />
+                      <i style={{ background: restaurant?.accentColor || '#f5b301' }} />
+                    </span>
+                    <strong>{t.name}</strong>
+                    <span>{t.note}</span>
+                  </button>
+                ))}
+              </div>
+
+              {HEAVY_INK.includes(theme) && (
+                <p className="field-hint" style={{ marginTop: '0.6rem' }}>
+                  This design covers the whole card in colour. Printing a full set uses a
+                  lot of ink — Classic or Banner is kinder to a desk printer.
+                </p>
+              )}
+
+              <span className="block-label" style={{ marginTop: '1rem' }}>Link in this code</span>
+              <code className="qr-url">{qrUrlFor(base, qrTable)}</code>
+              <button className="link-btn" onClick={() => {
+                navigator.clipboard?.writeText(qrUrlFor(base, qrTable));
+                toast.success('Link copied');
+              }}>Copy link</button>
+            </div>
           </div>
         </Modal>
       )}
@@ -184,6 +253,29 @@ export default function Tables() {
           onConfirm={handleDelete}
           onClose={() => setDeleting(null)}
         />
+      )}
+
+      {/* Portalled to <body> deliberately: the print stylesheet hides the whole app
+          shell, and a sheet nested inside it would be hidden along with its
+          ancestor no matter what display value it carries. */}
+      {printing && createPortal(
+        <div className={`print-sheets ${printing === 'all' ? 'multi' : 'single'}`}>
+          {/* Chunked into pages of four explicitly rather than leaning on
+              break-inside, which browsers apply unreliably to flex items — left
+              to itself the bottom row comes out sliced across the page edge. */}
+          {chunk(printing === 'all' ? tables.filter((t) => t.isActive) : [printing], TENTS_PER_PAGE)
+            .map((group, page) => (
+              <div className="print-page" key={page}>
+                {group.map((t) => (
+                  <div className="print-sheet" key={t.id}>
+                    <TableTent restaurant={restaurant} table={t}
+                      url={qrUrlFor(base, t)} theme={theme} />
+                  </div>
+                ))}
+              </div>
+            ))}
+        </div>,
+        document.body
       )}
     </>
   );

@@ -177,6 +177,15 @@ ok((await call('/admin/settings', { token: owner })).json.restaurant.storefrontU
 ok(Array.isArray((await call('/admin/settings', { token: owner })).json.restaurant.domains),
   'settings carries the registered domains for the QR fallback');
 
+console.log('\n── QR TENT THEME ──');
+const themed = await call('/admin/settings', { token: owner, method: 'PATCH', body: { qrTheme: 'kraft' } });
+ok(themed.json.restaurant.qrTheme === 'kraft', 'the owner can choose a tent design');
+ok((await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { qrTheme: 'neon-disco' } })).status === 400, 'an unknown design is rejected');
+ok((await call('/admin/settings', { token: rival })).json.restaurant.qrTheme === 'classic',
+  "one restaurant's design does not change another's");
+await call('/admin/settings', { token: owner, method: 'PATCH', body: { qrTheme: 'classic' } });
+
 console.log('\n── ACCEPTING-ORDERS SWITCH ──');
 // Also establishes the precondition the lifecycle tests below depend on, rather
 // than assuming whatever state the restaurant happened to be left in.

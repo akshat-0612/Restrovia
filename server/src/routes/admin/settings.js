@@ -23,6 +23,7 @@ const settingsSchema = z.object({
   logoUrl: z.string().trim().url().optional().nullable().or(z.literal('')),
   storefrontUrl: z.string().trim().url('Enter a full URL, e.g. https://your-app.pages.dev')
     .optional().nullable().or(z.literal('')),
+  qrTheme: z.enum(['classic', 'band', 'bold', 'kraft', 'midnight']).optional(),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a hex colour like #e8552d').optional(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a hex colour like #f5b301').optional(),
   phone: z.string().trim().max(20).optional().nullable(),

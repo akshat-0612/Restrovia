@@ -790,13 +790,182 @@ textarea { resize: vertical; }
   .platform-page { padding: 1.25rem 1rem 3rem; }
 }
 
-@media print {
-  .sidebar, .topbar, .modal-footer, .modal-header, .toast-stack { display: none !important; }
-  .modal-overlay { position: static; background: none; }
-  .modal { border: none; box-shadow: none; }
-  body, :root { background: #fff; color: #000; }
-  .qr-url, .qr-caption { color: #000; }
+/* ═══════════════════ Printable table tents ═══════════════════
+   The sheets are built off-screen and are the ONLY thing that prints. The app
+   itself is hidden at print time — otherwise the page behind the dialog comes
+   out on page one, which is what used to happen. */
+
+.print-sheets { display: none; }
+
+.tent {
+  --tent-ink: #14181d;
+  --tent-paper: #ffffff;
+  --tent-soft: #6b7280;
+
+  width: 78mm;
+  min-height: 108mm;
+  padding: 9mm 7mm 8mm;
+  background: var(--tent-paper);
+  color: var(--tent-ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4mm;
+  text-align: center;
+  font-family: var(--sans, system-ui, sans-serif);
+  position: relative;
+  overflow: hidden;
 }
+
+.tent-head { display: flex; flex-direction: column; align-items: center; gap: 1.5mm; }
+.tent-mark { font-size: 9mm; line-height: 1; }
+.tent-name {
+  font-size: 5.4mm; font-weight: 700; letter-spacing: -0.01em;
+  line-height: 1.15; text-wrap: balance;
+}
+.tent-tagline { font-size: 2.9mm; color: var(--tent-soft); line-height: 1.35; }
+
+/* The QR always sits on a light panel — scanners need the contrast, whatever
+   colour the rest of the card is. */
+.tent-qr-frame {
+  background: #ffffff;
+  padding: 3mm;
+  border-radius: 2mm;
+  line-height: 0;
+  margin-top: 1mm;
+}
+.tent-qr { width: 46mm; height: 46mm; display: block; image-rendering: crisp-edges; }
+
+.tent-cta { font-size: 3.3mm; font-weight: 600; margin: 0; }
+
+.tent-table {
+  display: flex; align-items: center; gap: 2.5mm;
+  width: 100%; margin-top: auto;
+}
+.tent-table-rule { flex: 1; height: 0.3mm; background: currentColor; opacity: 0.25; }
+.tent-table-label {
+  font-size: 4.6mm; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+}
+.tent-foot { font-size: 2.6mm; color: var(--tent-soft); margin: 0; }
+
+/* ── Classic · a double hairline frame, colour used only as a rule ── */
+.tent-classic { border: 0.4mm solid var(--tent-ink); }
+.tent-classic::after {
+  content: ''; position: absolute; inset: 1.6mm;
+  border: 0.2mm solid var(--tent-ink); opacity: 0.35; pointer-events: none;
+}
+.tent-classic .tent-name { text-transform: uppercase; letter-spacing: 0.06em; font-size: 4.6mm; }
+.tent-classic .tent-head::after {
+  content: ''; display: block; width: 14mm; height: 0.6mm;
+  background: var(--tent-brand); margin: 1mm auto 0;
+}
+
+/* ── Banner · brand across the top, name reversed out of it ── */
+.tent-band { padding-top: 0; border: 0.3mm solid #e3e7ec; }
+.tent-band .tent-head {
+  background: var(--tent-brand); color: #fff;
+  width: calc(100% + 14mm); margin: 0 -7mm;
+  padding: 7mm 7mm 6mm; gap: 1mm;
+}
+.tent-band .tent-tagline { color: rgba(255,255,255,0.82); }
+.tent-band .tent-table-label { color: var(--tent-brand); }
+
+/* ── Bold · the whole card is the brand, QR floats on white ── */
+.tent-bold {
+  background: linear-gradient(150deg, var(--tent-brand), color-mix(in srgb, var(--tent-accent) 55%, var(--tent-brand)));
+  color: #fff;
+  --tent-soft: rgba(255,255,255,0.78);
+}
+.tent-bold .tent-qr-frame { box-shadow: 0 1mm 3mm rgba(0,0,0,0.18); }
+.tent-bold .tent-table-label,
+.tent-bold .tent-cta { color: #fff; }
+
+/* ── Kraft · warm stock, dashed cut line ── */
+.tent-kraft {
+  background: #efe4cf;
+  --tent-ink: #3f3323;
+  --tent-soft: #857050;
+}
+.tent-kraft { border: 0.5mm dashed #b09a76; }
+.tent-kraft .tent-name { font-size: 5mm; letter-spacing: 0.01em; }
+.tent-kraft .tent-cta { text-transform: uppercase; letter-spacing: 0.14em; font-size: 2.8mm; }
+.tent-kraft .tent-qr-frame { border: 0.3mm solid #d8c9ab; }
+
+/* ── Midnight · dark card for low light ── */
+.tent-midnight {
+  background: #12161c;
+  --tent-ink: #f2f5f9;
+  --tent-soft: #93a1b3;
+  border: 0.3mm solid var(--tent-accent);
+}
+.tent-midnight .tent-table-label { color: var(--tent-accent); }
+
+/* ── Preview inside the dialog ── */
+.tent-preview {
+  transform: scale(0.82);
+  transform-origin: top center;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+  border-radius: 2mm;
+  margin-bottom: -18mm;
+}
+
+.theme-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.5rem; }
+.theme-option {
+  text-align: left; padding: 0.55rem 0.7rem; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border-2);
+}
+.theme-option:hover { border-color: var(--brand); }
+.theme-option.active { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 16%, transparent); }
+.theme-option strong { display: block; font-size: 0.82rem; }
+.theme-option span { display: block; font-size: 0.7rem; color: var(--muted); line-height: 1.4; margin-top: 0.1rem; }
+.theme-swatch { display: flex; gap: 2px; margin-bottom: 0.35rem; }
+.theme-swatch i { width: 14px; height: 8px; border-radius: 2px; display: block; }
+
+@media print {
+  /* Only the tents print. The sheets are portalled to <body>, so hiding #root
+     removes the entire app — including the dialog and the page behind it, which
+     is what used to come out as page one. Hiding #root rather than its children
+     also drops its min-height, which otherwise claims a blank leading page. */
+  #root { display: none !important; }
+
+  /* Pages stack as blocks; the tents inside each page are the flex row. */
+  .print-sheets { display: block !important; }
+  .print-sheets.multi { display: block !important; }
+
+  @page { size: A4 portrait; margin: 12mm; }
+
+  html, body { background: #fff !important; }
+
+  /* A single tent gets the page to itself, centred. */
+  .print-sheets.single .print-sheet {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 96vh;
+    break-after: page; page-break-after: always;
+  }
+  .print-sheets.single .print-sheet:last-child { break-after: auto; page-break-after: auto; }
+
+  /* A whole set tiles four to a sheet — fourteen tables is four pages, not
+     fourteen. Each tent is kept whole so none is split across a page break. */
+  .print-sheets.multi .print-page {
+    display: flex; flex-wrap: wrap;
+    gap: 10mm 12mm; align-content: flex-start; justify-content: center;
+    break-after: page; page-break-after: always;
+  }
+  .print-sheets.multi .print-page:last-child { break-after: auto; page-break-after: auto; }
+  /* Pinning the basis is what puts two in a row; left to shrink-to-fit, each
+     item claims the whole line and only one tent lands per row. */
+  .print-sheets.multi .print-sheet {
+    flex: 0 0 78mm; width: 78mm;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .print-sheets.multi .tent { outline: 0.2mm dashed rgba(128,128,128,0.55); outline-offset: 2mm; }
+
+  /* Without this the coloured themes print as blank white cards. */
+  .tent, .tent * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tent { transform: none !important; box-shadow: none !important; margin: 0 !important; }
+}
+
 
 /* ═══════════════════════ Domains ═══════════════════════ */
 .domain-cell {
@@ -842,4 +1011,13 @@ textarea { resize: vertical; }
 .qr-warning code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   word-break: break-all;
+}
+
+/* QR dialog: preview on the left, choices on the right. */
+.qr-layout { display: grid; grid-template-columns: minmax(0, 200px) 1fr; gap: 1.25rem; align-items: start; }
+.qr-preview-pane { overflow: hidden; display: flex; justify-content: center; }
+.qr-choices { min-width: 0; }
+.qr-choices .qr-url { display: block; margin: 0.3rem 0 0.5rem; }
+@media (max-width: 640px) {
+  .qr-layout { grid-template-columns: 1fr; }
 }
