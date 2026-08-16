@@ -5,6 +5,7 @@ import { prisma, serialize } from '../lib/prisma.js';
 import { ApiError, asyncHandler } from '../lib/errors.js';
 import { resolvePublicTenant } from '../middleware/tenant.js';
 import { createOrder, quoteOrder, ORDER_INCLUDE } from '../services/orderService.js';
+import { publicImageUrl } from '../lib/images.js';
 
 const router = Router();
 
@@ -40,12 +41,42 @@ const cartSchema = z.array(
   })
 ).min(1, 'Your cart is empty');
 
+/**
+ * Serves an uploaded image.
+ *
+ * Deliberately not tenant-scoped by slug: the id is an unguessable cuid, the
+ * bytes are a menu photo meant to be seen, and requiring the slug would stop the
+ * admin portal — which is not on a restaurant domain — from rendering previews.
+ *
+ * Cached hard and immutably. A new upload gets a new id, so a stored copy can
+ * never be stale, and a customer opening a menu of twenty photos on a free-tier
+ * API should be paying for those bytes once, not on every visit.
+ */
+router.get('/images/:id', asyncHandler(async (req, res) => {
+  const image = await prisma.image.findUnique({
+    where: { id: req.params.id },
+    select: { mimeType: true, data: true, sizeBytes: true, createdAt: true },
+  });
+  if (!image) throw ApiError.notFound('Image not found');
+
+  const etag = `"${req.params.id}-${image.sizeBytes}"`;
+  res.set({
+    'Content-Type': image.mimeType,
+    'Content-Length': String(image.sizeBytes),
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'Last-Modified': image.createdAt.toUTCString(),
+    ETag: etag,
+  });
+  if (req.headers['if-none-match'] === etag) return res.status(304).end();
+  res.send(image.data);
+}));
+
 /** Public storefront config — branding, tax, hours. Drives the whole customer app. */
 router.get('/restaurant', resolvePublicTenant, (req, res) => {
   const r = req.restaurant;
   res.json(serialize({
     id: r.id, slug: r.slug, name: r.name, tagline: r.tagline,
-    logoEmoji: r.logoEmoji, logoUrl: r.logoUrl,
+    logoEmoji: r.logoEmoji, logoUrl: r.logoImageId ? publicImageUrl(req, r.logoImageId) : r.logoUrl,
     primaryColor: r.primaryColor, accentColor: r.accentColor,
     phone: r.phone, address: r.address, city: r.city,
     currency: r.currency, currencySymbol: r.currencySymbol,
@@ -73,7 +104,8 @@ router.get('/menu', resolvePublicTenant, asyncHandler(async (req, res) => {
     categories: categories.map((c) => ({
       id: c.id, name: c.name, icon: c.icon,
       items: c.menuItems.map((i) => ({
-        id: i.id, name: i.name, description: i.description, imageUrl: i.imageUrl,
+        id: i.id, name: i.name, description: i.description,
+        imageUrl: i.imageId ? publicImageUrl(req, i.imageId) : i.imageUrl,
         categoryId: c.id, categoryName: c.name, categoryIcon: c.icon,
         basePrice: i.basePrice == null ? null : Number(i.basePrice),
         isVeg: i.isVeg, isAvailable: i.isAvailable, isFeatured: i.isFeatured,

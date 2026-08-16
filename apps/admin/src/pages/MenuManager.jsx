@@ -5,10 +5,11 @@ import { useApi } from '../lib/hooks';
 import { useAuth } from '../context/auth-context';
 import { useToast } from '../components/toast-context';
 import Modal, { ConfirmModal } from '../components/Modal';
+import ImagePicker from '../components/ImagePicker';
 import { Card, EmptyState, ErrorState, Spinner } from '../components/States';
 
 const EMPTY_ITEM = {
-  name: '', description: '', categoryId: '', imageUrl: '',
+  name: '', description: '', categoryId: '', image: null,
   basePrice: '', variants: [], isVeg: true, isAvailable: true,
   isFeatured: false, spiceLevel: 0, prepTimeMins: 10,
 };
@@ -222,7 +223,10 @@ function ItemModal({ mode, initial, categories, symbol, onClose, onSaved }) {
     categoryId: initial.categoryId || initial.category?.id || categories[0]?.id || '',
     basePrice: initial.basePrice ?? '',
     description: initial.description ?? '',
-    imageUrl: initial.imageUrl ?? '',
+    // An item may carry an upload, an older external URL, or neither.
+    image: initial.image
+      ? { ...initial.image, url: initial.imageUrl }
+      : initial.imageUrl ? { url: initial.imageUrl, legacy: true } : null,
     variants: (initial.variants ?? []).map((v) => ({ label: v.label, price: String(v.price) })),
   }));
   const [busy, setBusy] = useState(false);
@@ -245,7 +249,9 @@ function ItemModal({ mode, initial, categories, symbol, onClose, onSaved }) {
       categoryId: form.categoryId,
       name: form.name.trim(),
       description: form.description.trim() || null,
-      imageUrl: form.imageUrl.trim() || null,
+      // Uploads win; a legacy external URL is preserved until it is replaced.
+      imageId: form.image && !form.image.legacy ? form.image.id : null,
+      imageUrl: form.image?.legacy ? form.image.url : null,
       isVeg: form.isVeg,
       isAvailable: form.isAvailable,
       isFeatured: form.isFeatured,
@@ -323,12 +329,16 @@ function ItemModal({ mode, initial, categories, symbol, onClose, onSaved }) {
             rows={2} maxLength={300} placeholder="Shown under the name on the customer app" />
         </div>
 
-        <div className="field">
-          <label>Image URL <span className="optional">optional</span></label>
-          <input value={form.imageUrl} onChange={(e) => set('imageUrl', e.target.value)}
-            placeholder="https://…" />
-          <span className="field-hint">Leave blank to show the category icon instead.</span>
-        </div>
+        <ImagePicker
+          kind="menu"
+          label={<>Photo <span className="optional">optional</span></>}
+          value={form.image}
+          onChange={(image) => set('image', image)}
+        />
+        <p className="field-hint" style={{ marginTop: '-0.5rem', marginBottom: '0.9rem' }}>
+          Every photo is cropped to the same shape, so the menu grid stays even.
+          Without one, the category icon is shown.
+        </p>
 
         {/* Pricing: either one price, or a set of sizes. */}
         <div className="field">

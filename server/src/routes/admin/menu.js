@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, serialize } from '../../lib/prisma.js';
 import { ApiError, asyncHandler } from '../../lib/errors.js';
 import { requireRole } from '../../middleware/auth.js';
+import { publicImageUrl } from '../../lib/images.js';
 
 const router = Router();
 const canEdit = requireRole('PLATFORM_ADMIN', 'OWNER', 'MANAGER');
@@ -93,6 +94,7 @@ const itemFields = z.object({
   name: z.string().trim().min(1, 'Item name is required').max(80),
   description: z.string().trim().max(300).optional().nullable(),
   imageUrl: z.string().trim().url('Enter a valid image URL').optional().nullable().or(z.literal('')),
+  imageId: z.string().optional().nullable(),
   basePrice: z.number().nonnegative().optional().nullable(),
   variants: z.array(variantSchema).max(6).optional(),
   isVeg: z.boolean().optional(),
@@ -125,11 +127,28 @@ router.get('/items', asyncHandler(async (req, res) => {
       ...(available === 'true' ? { isAvailable: true } : available === 'false' ? { isAvailable: false } : {}),
       ...(search?.trim() ? { name: { contains: search.trim(), mode: 'insensitive' } } : {}),
     },
-    include: { variants: { orderBy: { sortOrder: 'asc' } }, category: { select: { id: true, name: true, icon: true } } },
+    include: {
+      variants: { orderBy: { sortOrder: 'asc' } },
+      category: { select: { id: true, name: true, icon: true } },
+      image: { select: { id: true, width: true, height: true, sizeBytes: true } },
+    },
     orderBy: [{ category: { sortOrder: 'asc' } }, { sortOrder: 'asc' }, { name: 'asc' }],
   });
-  res.json({ items: serialize(items) });
+  res.json({ items: serialize(items.map((i) => withImageUrl(req, i))) });
 }));
+
+/** Attaches a servable URL to an item's uploaded image, if it has one. */
+function withImageUrl(req, item) {
+  if (!item.image) return item;
+  return { ...item, image: { ...item.image, url: publicImageUrl(req, item.image.id) } };
+}
+
+/** Verifies an image belongs to this tenant before an item points at it. */
+async function assertImage(restaurantId, imageId) {
+  if (!imageId) return;
+  const image = await prisma.image.findFirst({ where: { id: imageId, restaurantId }, select: { id: true } });
+  if (!image) throw ApiError.badRequest('That image does not exist');
+}
 
 /** Verifies a category belongs to this tenant before an item is attached to it. */
 async function assertCategory(restaurantId, categoryId) {
@@ -140,6 +159,7 @@ async function assertCategory(restaurantId, categoryId) {
 router.post('/items', canEdit, asyncHandler(async (req, res) => {
   const body = itemCreateSchema.parse(req.body);
   await assertCategory(req.restaurantId, body.categoryId);
+  await assertImage(req.restaurantId, body.imageId);
 
   const { variants = [], ...rest } = body;
   const item = await prisma.menuItem.create({
@@ -151,9 +171,9 @@ router.post('/items', canEdit, asyncHandler(async (req, res) => {
       restaurantId: req.restaurantId,
       variants: { create: variants.map((v, i) => ({ ...v, sortOrder: i })) },
     },
-    include: { variants: true, category: true },
+    include: { variants: true, category: true, image: { select: { id: true, width: true, height: true, sizeBytes: true } } },
   });
-  res.status(201).json({ item: serialize(item) });
+  res.status(201).json({ item: serialize(withImageUrl(req, item)) });
 }));
 
 router.patch('/items/:id', canEdit, asyncHandler(async (req, res) => {
@@ -164,6 +184,7 @@ router.patch('/items/:id', canEdit, asyncHandler(async (req, res) => {
   });
   if (!existing) throw ApiError.notFound('Item not found');
   if (body.categoryId) await assertCategory(req.restaurantId, body.categoryId);
+  if (body.imageId) await assertImage(req.restaurantId, body.imageId);
 
   // Check the state the item will end up in, not just what the request carried.
   const nextVariants = body.variants ?? existing.variants;
@@ -189,10 +210,10 @@ router.patch('/items/:id', canEdit, asyncHandler(async (req, res) => {
         ...(rest.imageUrl !== undefined ? { imageUrl: rest.imageUrl || null } : {}),
         ...(variants ? { basePrice: variants.length > 0 ? null : (rest.basePrice ?? existing.basePrice) } : {}),
       },
-      include: { variants: { orderBy: { sortOrder: 'asc' } }, category: true },
+      include: { variants: { orderBy: { sortOrder: 'asc' } }, category: true, image: { select: { id: true, width: true, height: true, sizeBytes: true } } },
     });
   });
-  res.json({ item: serialize(item) });
+  res.json({ item: serialize(withImageUrl(req, item)) });
 }));
 
 /** One-tap availability toggle from the menu grid — the most-used action on a busy day. */

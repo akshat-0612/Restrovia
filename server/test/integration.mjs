@@ -177,6 +177,49 @@ ok((await call('/admin/settings', { token: owner })).json.restaurant.storefrontU
 ok(Array.isArray((await call('/admin/settings', { token: owner })).json.restaurant.domains),
   'settings carries the registered domains for the QR fallback');
 
+console.log('\n── IMAGE UPLOADS ──');
+// An 8x8 PNG, small but structurally valid.
+const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII=';
+
+const up = await call('/admin/images', { token: owner, method: 'POST',
+  body: { dataUrl: tinyPng, width: 800, height: 600 } });
+ok(up.status === 201 && up.json.image?.id, 'an image uploads');
+ok(/\/api\/public\/images\//.test(up.json.image?.url || ''), 'and comes back with a servable URL');
+const imageId = up.json.image.id;
+
+ok((await call('/admin/images', { token: owner, method: 'POST',
+  body: { dataUrl: 'data:application/pdf;base64,JVBERi0=', width: 10, height: 10 } })).status === 400,
+  'a non-image type is rejected');
+ok((await call('/admin/images', { token: owner, method: 'POST',
+  body: { dataUrl: 'not-a-data-url', width: 10, height: 10 } })).status === 400,
+  'a malformed payload is rejected');
+ok((await call('/admin/images', { token: staff, method: 'POST',
+  body: { dataUrl: tinyPng, width: 8, height: 8 } })).status === 403, 'STAFF cannot upload');
+
+// The id is the only thing guarding the bytes, so it must not be attachable
+// across tenants.
+const rivalCats = (await call('/admin/menu/categories', { token: rival })).json.categories;
+ok((await call('/admin/menu/items', { token: rival, method: 'POST',
+  body: { name: 'Borrowed art', categoryId: rivalCats[0].id, basePrice: 10, imageId } })).status === 400,
+  "another tenant cannot attach this restaurant's image");
+ok((await call(`/admin/images/${imageId}`, { token: rival, method: 'DELETE' })).status === 404,
+  "another tenant cannot delete it either");
+
+const withImage = await call('/admin/menu/items', { token: owner, method: 'POST',
+  body: { name: 'Test Photo Dish', categoryId: cat.id, basePrice: 55, imageId } });
+ok(withImage.json.item?.image?.url, 'an item carries its image URL for the admin');
+const publicMenu = (await call('/public/menu?restaurant=delight-food')).json;
+const shown = publicMenu.categories.flatMap((c) => c.items).find((i) => i.name === 'Test Photo Dish');
+ok(/\/api\/public\/images\//.test(shown?.imageUrl || ''), 'and the customer menu serves it');
+
+const logo = await call('/admin/settings', { token: owner, method: 'PATCH', body: { logoImageId: imageId } });
+ok(logo.json.restaurant?.logoImage?.url, 'a restaurant logo can be an upload');
+ok((await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { logoImageId: 'not-a-real-image' } })).status === 400, 'an unknown logo image is rejected');
+await call('/admin/settings', { token: owner, method: 'PATCH', body: { logoImageId: null } });
+await call(`/admin/menu/items/${withImage.json.item.id}`, { token: owner, method: 'DELETE' });
+ok((await call(`/admin/images/${imageId}`, { token: owner, method: 'DELETE' })).status === 200, 'the owner can delete it');
+
 console.log('\n── QR TENT THEME ──');
 const themed = await call('/admin/settings', { token: owner, method: 'PATCH', body: { qrTheme: 'kraft' } });
 ok(themed.json.restaurant.qrTheme === 'kraft', 'the owner can choose a tent design');

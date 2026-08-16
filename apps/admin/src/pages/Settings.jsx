@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { useToast } from '../components/toast-context';
 import { Card, ErrorState, Spinner } from '../components/States';
+import ImagePicker from '../components/ImagePicker';
 
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'America/New_York'];
 
@@ -27,9 +28,13 @@ export default function Settings() {
     setBusy(true);
     try {
       // Only the named fields go up, so one section's save can't clobber another's.
+      const NUMERIC = ['taxPercent', 'serviceChargePct', 'minOrderAmount', 'avgPrepTimeMins'];
       const payload = Object.fromEntries(
-        fields.map((f) => [f, ['taxPercent', 'serviceChargePct', 'minOrderAmount', 'avgPrepTimeMins'].includes(f)
-          ? Number(form[f]) : form[f]])
+        fields.map((f) => {
+          // The picker holds a whole image object; the API wants just its id.
+          if (f === 'logoImageId') return [f, form.logoImage?.id ?? null];
+          return [f, NUMERIC.includes(f) ? Number(form[f]) : form[f]];
+        })
       );
       const { restaurant } = await api.updateSettings(payload);
       setForm(restaurant);
@@ -125,18 +130,26 @@ export default function Settings() {
 
       <Card title="Branding" subtitle="Colours and logo used across your customer app"
         action={<button className="btn btn-primary btn-sm" disabled={busy}
-          onClick={() => save(['logoEmoji', 'logoUrl', 'primaryColor', 'accentColor'])}>Save</button>}>
+          onClick={() => save(['logoEmoji', 'logoUrl', 'logoImageId', 'primaryColor', 'accentColor'])}>Save</button>}>
         <div className="form">
           <div className="field-row">
             <div className="field">
               <label>Logo emoji</label>
               <input value={form.logoEmoji} onChange={set('logoEmoji')} maxLength={8} className="emoji-input" />
-              <span className="field-hint">Used when no logo image is set.</span>
+              <span className="field-hint">Shown when there is no logo image.</span>
             </div>
-            <div className="field">
-              <label>Logo image URL</label>
-              <input value={form.logoUrl ?? ''} onChange={set('logoUrl')} placeholder="https://…" />
-            </div>
+            <ImagePicker
+              kind="logo"
+              label="Logo image"
+              value={form.logoImage
+                ? { ...form.logoImage }
+                : form.logoUrl ? { url: form.logoUrl, legacy: true } : null}
+              onChange={(image) => setForm((f) => ({
+                ...f,
+                logoImage: image && !image.legacy ? image : null,
+                logoUrl: image?.legacy ? image.url : null,
+              }))}
+            />
           </div>
           <div className="field-row">
             <div className="field">
@@ -155,7 +168,11 @@ export default function Settings() {
             </div>
           </div>
           <div className="brand-preview" style={{ '--preview-brand': form.primaryColor, '--preview-accent': form.accentColor }}>
-            <span className="preview-logo">{form.logoEmoji}</span>
+            <span className="preview-logo">
+              {form.logoImage?.url || form.logoUrl
+                ? <img src={form.logoImage?.url || form.logoUrl} alt="" />
+                : form.logoEmoji}
+            </span>
             <div>
               <strong>{form.name}</strong>
               <span>{form.tagline}</span>

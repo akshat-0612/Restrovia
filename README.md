@@ -160,6 +160,9 @@ nothing about any other, so bundling guesses into a lookup buys nothing.
   the items nobody ordered.
 - **Menu** — categories and items with sizes, availability toggles, spice level, veg
   flag and prep time. Changes reach the customer app immediately.
+- **Photos** — uploaded and cropped in the browser, not pasted as URLs. The crop is
+  locked to one shape per use (4:3 for dishes, square for the logo), so the menu grid
+  stays even however the photos were taken.
 - **Tables** — per-table QR codes that pre-fill the table when scanned.
 - **Coupons** — percentage or flat discounts with minimums, caps, usage limits, expiry.
 - **Staff** — accounts and roles, with guards against locking yourself out.
@@ -387,6 +390,24 @@ them point a CNAME at it, then attach it to their restaurant under **Domains** a
 update their storefront URL. Keep the deployment in **your** Cloudflare account, not
 theirs: one place to ship fixes, your source stays yours, and suspending a
 non-paying client is an `isActive` toggle rather than a negotiation.
+
+### Where images live
+
+Photos are stored in Postgres as bytes, in their own table, and served by the API
+with a one-year immutable cache.
+
+That is a deliberate choice at this size rather than a default. The browser crops,
+resizes and re-encodes to WebP before uploading, so a phone photo of several
+megabytes arrives as roughly 40–70KB — a hundred dishes is single-digit megabytes
+against Neon's free 500MB. Keeping them in the database means no second service to
+run, no credentials to hold, and backups that actually contain the images.
+
+Two things would change that calculation. If storage grows past a few hundred
+megabytes, or if serving image bytes from a sleeping free-tier API starts hurting,
+move the bytes to object storage — **Cloudflare R2** is the natural fit, since the
+frontends are already there and its free tier charges nothing for egress. Only the
+upload route and the URL helper would need to change: everything else already refers
+to images by id.
 
 ### Known limits of the free tier
 

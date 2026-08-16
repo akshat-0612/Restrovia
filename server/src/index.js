@@ -15,6 +15,7 @@ import settingsRoutes from './routes/admin/settings.js';
 import couponsRoutes from './routes/admin/coupons.js';
 import analyticsRoutes from './routes/admin/analytics.js';
 import exportsRoutes from './routes/admin/exports.js';
+import imagesRoutes from './routes/admin/images.js';
 
 import { requireAuth } from './middleware/auth.js';
 import { resolveTenant } from './middleware/tenant.js';
@@ -27,7 +28,9 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '1mb' }));
+// Cropped images arrive base64-encoded in the JSON body, which inflates them by
+// about a third; 4mb leaves room without inviting anything large.
+app.use(express.json({ limit: '4mb' }));
 
 /**
  * Which browsers may call this API.
@@ -148,6 +151,7 @@ admin.use('/settings', settingsRoutes);
 admin.use('/coupons', couponsRoutes);
 admin.use('/analytics', analyticsRoutes);
 admin.use('/export', exportsRoutes);
+admin.use('/images', imagesRoutes);
 app.use('/api/admin', admin);
 
 app.use(notFoundHandler);

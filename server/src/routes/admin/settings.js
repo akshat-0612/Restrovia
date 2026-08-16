@@ -1,18 +1,31 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma, serialize } from '../../lib/prisma.js';
-import { asyncHandler } from '../../lib/errors.js';
+import { ApiError, asyncHandler } from '../../lib/errors.js';
 import { requireRole } from '../../middleware/auth.js';
+import { publicImageUrl } from '../../lib/images.js';
 
 const router = Router();
+
+/** Attaches a servable URL to the uploaded logo, if there is one. */
+function withLogoUrl(req, restaurant) {
+  if (!restaurant?.logoImage) return restaurant;
+  return {
+    ...restaurant,
+    logoImage: { ...restaurant.logoImage, url: publicImageUrl(req, restaurant.logoImage.id) },
+  };
+}
 const canEdit = requireRole('PLATFORM_ADMIN', 'OWNER');
 
 router.get('/', asyncHandler(async (req, res) => {
   const restaurant = await prisma.restaurant.findUnique({
     where: { id: req.restaurantId },
-    include: { domains: { orderBy: [{ isPrimary: 'desc' }, { hostname: 'asc' }] } },
+    include: {
+      domains: { orderBy: [{ isPrimary: 'desc' }, { hostname: 'asc' }] },
+      logoImage: { select: { id: true, width: true, height: true, sizeBytes: true } },
+    },
   });
-  res.json({ restaurant: serialize(restaurant) });
+  res.json({ restaurant: serialize(withLogoUrl(req, restaurant)) });
 }));
 
 /** Fields an owner may edit. `slug` and `plan` are deliberately absent — those are platform-owned. */
@@ -21,6 +34,7 @@ const settingsSchema = z.object({
   tagline: z.string().trim().max(120).optional().nullable(),
   logoEmoji: z.string().trim().max(8).optional(),
   logoUrl: z.string().trim().url().optional().nullable().or(z.literal('')),
+  logoImageId: z.string().optional().nullable(),
   storefrontUrl: z.string().trim().url('Enter a full URL, e.g. https://your-app.pages.dev')
     .optional().nullable().or(z.literal('')),
   qrTheme: z.enum(['classic', 'band', 'bold', 'kraft', 'midnight']).optional(),
@@ -47,6 +61,13 @@ const settingsSchema = z.object({
 
 router.patch('/', canEdit, asyncHandler(async (req, res) => {
   const body = settingsSchema.parse(req.body);
+  if (body.logoImageId) {
+    const owned = await prisma.image.findFirst({
+      where: { id: body.logoImageId, restaurantId: req.restaurantId }, select: { id: true },
+    });
+    if (!owned) throw ApiError.badRequest('That image does not exist');
+  }
+
   const restaurant = await prisma.restaurant.update({
     where: { id: req.restaurantId },
     data: {
@@ -58,8 +79,9 @@ router.patch('/', canEdit, asyncHandler(async (req, res) => {
         : {}),
       ...(body.email !== undefined ? { email: body.email || null } : {}),
     },
+    include: { logoImage: { select: { id: true, width: true, height: true, sizeBytes: true } } },
   });
-  res.json({ restaurant: serialize(restaurant) });
+  res.json({ restaurant: serialize(withLogoUrl(req, restaurant)) });
 }));
 
 /** The big red switch on the dashboard — stop taking orders without closing the shop. */

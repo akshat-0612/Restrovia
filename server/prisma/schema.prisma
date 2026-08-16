@@ -24,7 +24,10 @@ model Restaurant {
   // Branding — each deployed customer app pulls this at boot, so a new client
   // is a config change rather than a code change.
   logoEmoji    String  @default("🍽️")
+  /// Kept for restaurants configured with an externally hosted logo. An upload
+  /// sets logoImageId instead, and that wins when both are present.
   logoUrl      String?
+  logoImageId  String?
 
   /// Where this restaurant's customers actually order, e.g.
   /// "https://delight-food.pages.dev". The admin portal is shared by every
@@ -72,7 +75,10 @@ model Restaurant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  logoImage  Image?  @relation("RestaurantLogo", fields: [logoImageId], references: [id], onDelete: SetNull)
+
   users      User[]
+  images     Image[] @relation("RestaurantImages")
   categories Category[]
   menuItems  MenuItem[]
   tables     RestaurantTable[]
@@ -175,7 +181,9 @@ model MenuItem {
   categoryId   String
   name         String
   description  String?
+  /// As above: an external URL, superseded by imageId once something is uploaded.
   imageUrl     String?
+  imageId      String?
   /// Used when the item has no variants. Null for variant-priced items.
   basePrice    Decimal? @db.Decimal(10, 2)
 
@@ -194,6 +202,7 @@ model MenuItem {
 
   restaurant Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   category   Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  image      Image?        @relation(fields: [imageId], references: [id], onDelete: SetNull)
   variants   MenuVariant[]
   orderItems OrderItem[]
 
@@ -371,4 +380,37 @@ model Coupon {
 enum DiscountType {
   PERCENT
   FLAT
+}
+
+// ───────────────────────────── Uploaded images ─────────────────────────────
+
+/// Menu photos and logos, held as bytes in the database.
+///
+/// They are cropped and re-encoded in the browser before upload — a fixed
+/// aspect ratio, capped dimensions, WebP — so what lands here is tens of
+/// kilobytes rather than the megapixels a phone camera produces. At that size
+/// Postgres carries them comfortably and there is no second service to run,
+/// pay for or hold credentials to.
+///
+/// Kept in its own table rather than a column on MenuItem so that listing the
+/// menu never drags image bytes along with it; the rows are only ever read one
+/// at a time, by the endpoint that serves them.
+model Image {
+  id           String @id @default(cuid())
+  restaurantId String
+
+  mimeType  String @default("image/webp")
+  width     Int
+  height    Int
+  sizeBytes Int
+  data      Bytes
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant   @relation("RestaurantImages", fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItems  MenuItem[]
+  logoFor    Restaurant[] @relation("RestaurantLogo")
+
+  @@index([restaurantId])
+  @@map("images")
 }

@@ -110,6 +110,10 @@ export const api = {
   setAvailability: (id, isAvailable) =>
     request(`/admin/menu/items/${id}/availability`, { method: 'PATCH', body: { isAvailable } }),
 
+  // Images — cropped and re-encoded in the browser, so these payloads are small
+  uploadImage: (body) => request('/admin/images', { method: 'POST', body }),
+  deleteImage: (id) => request(`/admin/images/${id}`, { method: 'DELETE' }),
+
   // Tables
   tables:       (signal) => request('/admin/tables', { signal }),
   createTable:  (body) => request('/admin/tables', { method: 'POST', body }),

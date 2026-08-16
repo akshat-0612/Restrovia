@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function Modal({ title, subtitle, onClose, children, footer, width = 480 }) {
   useEffect(() => {
@@ -11,7 +12,9 @@ export default function Modal({ title, subtitle, onClose, children, footer, widt
     };
   }, [onClose]);
 
-  return (
+  // Portalled to <body>: a modal opened from inside a form would otherwise nest
+  // its buttons in that form, where anything without an explicit type submits it.
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: width }} onClick={(e) => e.stopPropagation()} role="dialog">
         <div className="modal-header">
@@ -24,7 +27,8 @@ export default function Modal({ title, subtitle, onClose, children, footer, widt
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
