@@ -1,7 +1,7 @@
 const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const TOKEN_KEY = 'delightful:admin:token';
+const TOKEN_KEY = 'restrovia:admin:token';
 /** Set only for platform admins, who have no home restaurant of their own. */
-const IMPERSONATE_KEY = 'delightful:admin:restaurantId';
+const IMPERSONATE_KEY = 'restrovia:admin:restaurantId';
 
 export const tokenStore = {
   get:   () => localStorage.getItem(TOKEN_KEY),
@@ -24,7 +24,7 @@ export class ApiError extends Error {
 }
 
 /** Fired on a 401 so the app can drop to the login screen from anywhere. */
-const AUTH_FAILED = 'delightful:auth-failed';
+const AUTH_FAILED = 'restrovia:auth-failed';
 export const onAuthFailure = (handler) => {
   window.addEventListener(AUTH_FAILED, handler);
   return () => window.removeEventListener(AUTH_FAILED, handler);

@@ -1,21 +1,21 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: delightful-db
+    container_name: restrovia-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: delightful
-      POSTGRES_PASSWORD: delightful
-      POSTGRES_DB: delightful
+      POSTGRES_USER: restrovia
+      POSTGRES_PASSWORD: restrovia
+      POSTGRES_DB: restrovia
     ports:
       - "5544:5432"
     volumes:
-      - delightful_pgdata:/var/lib/postgresql/data
+      - restrovia_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U delightful"]
+      test: ["CMD-SHELL", "pg_isready -U restrovia"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  delightful_pgdata:
+  restrovia_pgdata:

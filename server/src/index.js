@@ -125,7 +125,7 @@ app.use('/api/auth/login', loginLimiter, loginSprayLimiter);
 app.get('/api/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ ok: true, service: 'delightful-api', db: 'up', time: new Date().toISOString() });
+    res.json({ ok: true, service: 'restrovia-api', db: 'up', time: new Date().toISOString() });
   } catch {
     res.status(503).json({ ok: false, db: 'down' });
   }
@@ -156,7 +156,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`\n  Delightful API  →  http://localhost:${PORT}`);
+  console.log(`\n  Restrovia API  →  http://localhost:${PORT}`);
   console.log(`  Health          →  http://localhost:${PORT}/api/health\n`);
 });
 

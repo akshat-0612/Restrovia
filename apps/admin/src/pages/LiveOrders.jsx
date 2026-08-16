@@ -25,7 +25,7 @@ export default function LiveOrders() {
   const symbol = user.restaurant?.currencySymbol || '₹';
 
   const { data, error, loading, refresh } = usePolling((signal) => api.liveOrders(signal), 10000);
-  const [soundOn, setSoundOn] = useState(() => localStorage.getItem('delightful:sound') !== 'off');
+  const [soundOn, setSoundOn] = useState(() => localStorage.getItem('restrovia:sound') !== 'off');
   const [busyId, setBusyId] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -58,7 +58,7 @@ export default function LiveOrders() {
 
   function toggleSound() {
     setSoundOn((on) => {
-      localStorage.setItem('delightful:sound', on ? 'off' : 'on');
+      localStorage.setItem('restrovia:sound', on ? 'off' : 'on');
       if (on === false) chime();
       return !on;
     });

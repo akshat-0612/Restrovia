@@ -1,9 +1,9 @@
 {
-  "name": "@delightful/customer",
+  "name": "@restrovia/customer",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Delightful — customer ordering app (one deploy per restaurant)",
+  "description": "Restrovia — customer ordering app (one deploy per restaurant)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

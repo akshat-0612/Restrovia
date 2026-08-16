@@ -369,97 +369,18 @@ async function seedRestaurant(config) {
 }
 
 async function main() {
-  console.log('\n╭───────────────────────────────────────────╮');
-  console.log('│  Seeding Delightful                       │');
-  console.log('╰───────────────────────────────────────────╯');
-
-  // ── Platform admin (the vendor account, no restaurant) ──
-  const platformEmail = (process.env.SEED_PLATFORM_EMAIL || 'platform@delightful.app').toLowerCase();
-  await prisma.user.deleteMany({ where: { restaurantId: null, email: platformEmail } });
-  await prisma.user.create({
-    data: {
-      name: 'Platform Admin',
-      email: platformEmail,
-      role: 'PLATFORM_ADMIN',
-      passwordHash: await bcrypt.hash(process.env.SEED_PLATFORM_PASSWORD || 'platform123', 10),
-    },
-  });
-  console.log(`\n  ▸ Platform\n      admin       ✓  ${platformEmail}`);
-
-  await seedRestaurant({
-    name: 'Delight Food',
-    slug: 'delight-food',
-    restaurant: {
-      slug: 'delight-food',
-      name: 'Delight Food',
-      tagline: 'Fresh, fast and full of flavour',
-      logoEmoji: '🍽️',
-      primaryColor: '#e8552d',
-      accentColor: '#f5b301',
-      phone: '+91 98765 43210',
-      email: 'hello@delightfood.in',
-      address: '14 MG Road, Camp',
-      city: 'Pune',
-      gstNumber: '27AABCD1234E1Z5',
-      taxPercent: 5,
-      taxLabel: 'GST',
-      avgPrepTimeMins: 15,
-      openingTime: '08:00',
-      closingTime: '23:00',
-      plan: 'GROWTH',
-    },
-    users: [
-      { name: 'Rahul Deshmukh', email: process.env.SEED_OWNER_EMAIL || 'owner@delightfood.in', password: process.env.SEED_OWNER_PASSWORD || 'owner123', role: 'OWNER', phone: '+91 98765 43210' },
-      { name: 'Priya Nair',     email: 'manager@delightfood.in', password: 'manager123', role: 'MANAGER' },
-      { name: 'Sameer Khan',    email: 'staff@delightfood.in',   password: 'staff123',   role: 'STAFF' },
-    ],
-    menu: DELIGHT_MENU,
-    tableCount: 14,
-    coupons: [
-      { code: 'WELCOME10', description: '10% off your first order', discountType: 'PERCENT', value: 10, minOrderAmount: 200, maxDiscount: 100 },
-      { code: 'CHAI20',    description: 'Flat ₹20 off on orders above ₹150', discountType: 'FLAT', value: 20, minOrderAmount: 150 },
-      { code: 'FEAST15',   description: '15% off on orders above ₹500', discountType: 'PERCENT', value: 15, minOrderAmount: 500, maxDiscount: 200 },
-    ],
-    history: { days: 90, baseOrdersPerDay: 22 },
-  });
-
-  // A second tenant proves the isolation story end to end — same database,
-  // completely separate menu, staff, tables and numbers.
-  await seedRestaurant({
-    name: 'Urban Slice (demo tenant)',
-    slug: 'urban-slice',
-    restaurant: {
-      slug: 'urban-slice',
-      name: 'Urban Slice',
-      tagline: 'Wood-fired, every time',
-      logoEmoji: '🍕',
-      primaryColor: '#c2410c',
-      accentColor: '#facc15',
-      phone: '+91 90000 11111',
-      city: 'Bengaluru',
-      taxPercent: 5,
-      plan: 'STARTER',
-    },
-    users: [
-      { name: 'Meera Rao', email: 'owner@urbanslice.in', password: 'owner123', role: 'OWNER' },
-    ],
-    menu: DEMO_MENU,
-    tableCount: 8,
-    history: { days: 45, baseOrdersPerDay: 9 },
-  });
-
-  console.log('\n╭───────────────────────────────────────────╮');
-  console.log('│  Sign in                                  │');
-  console.log('├───────────────────────────────────────────┤');
-  console.log('│  Platform  platform@delightful.app        │');
-  console.log('│            platform123                    │');
-  console.log('│  Owner     owner@delightfood.in           │');
-  console.log('│            owner123                       │');
-  console.log('│  Manager   manager@delightfood.in         │');
-  console.log('│            manager123                     │');
-  console.log('│  Staff     staff@delightfood.in           │');
-  console.log('│            staff123                       │');
-  console.log('╰───────────────────────────────────────────╯\n');
+  console.log('\n╭────────────────────────────────────╮');
+  console.log('│  Sign in                           │');
+  console.log('├────────────────────────────────────┤');
+  console.log('│  Platform  platform@restrovia.app  │');
+  console.log('│            platform123             │');
+  console.log('│  Owner     owner@delightfood.in    │');
+  console.log('│            owner123                │');
+  console.log('│  Manager   manager@delightfood.in  │');
+  console.log('│            manager123              │');
+  console.log('│  Staff     staff@delightfood.in    │');
+  console.log('│            staff123                │');
+  console.log('╰────────────────────────────────────╯\n');
 }
 
 main()

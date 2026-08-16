@@ -6,7 +6,7 @@
 # path, so a build that only sees server/ has no dependencies to build with.
 services:
   - type: web
-    name: delightful-api
+    name: restrovia-api
     runtime: node
     plan: free
     # Build, then apply any pending migrations. Free-tier Render has no separate

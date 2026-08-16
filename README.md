@@ -1,4 +1,4 @@
-# Delightful
+# Restrovia
 
 A multi-tenant restaurant ordering platform: a customer web app for placing dine-in
 orders, and an admin portal where the restaurant owner runs the floor and reads their
@@ -41,7 +41,7 @@ npm run dev          # API :4000 · customer :5173 · admin :5174
 
 | Role | Email | Password |
 |---|---|---|
-| Platform admin (you, the vendor) | `platform@delightful.app` | `platform123` |
+| Platform admin (you, the vendor) | `platform@restrovia.app` | `platform123` |
 | Restaurant owner | `owner@delightfood.in` | `owner123` |
 | Manager | `manager@delightfood.in` | `manager123` |
 | Kitchen staff | `staff@delightfood.in` | `staff123` |
@@ -228,7 +228,7 @@ Create a project and take the **pooled** connection string (the one containing
 connection limit:
 
 ```
-DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/delightful?sslmode=require&pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/restrovia?sslmode=require&pgbouncer=true&connection_limit=1"
 ```
 
 ### 2. API — Render
@@ -252,7 +252,7 @@ Environment variables:
 | `DATABASE_URL` | the pooled Neon string |
 | `JWT_SECRET` | a long random string — generate a fresh one, never reuse the dev value |
 | `CORS_ORIGINS` | the admin portal URL. Restaurant domains resolve from the database and are not listed here |
-| `PLATFORM_DOMAIN` | e.g. `delightful.app` — every restaurant gets `<slug>.<this>` for free |
+| `PLATFORM_DOMAIN` | e.g. `restrovia.app` — every restaurant gets `<slug>.<this>` for free |
 | `NODE_ENV` | `production` |
 | `NODE_VERSION` | `20` |
 
@@ -287,7 +287,7 @@ and output directory.
 |---|---|
 | Build command | `npm ci && npm run build:admin` |
 | Output directory | `apps/admin/dist` |
-| `VITE_API_URL` | your Render URL, e.g. `https://delightful-api.onrender.com` |
+| `VITE_API_URL` | your Render URL, e.g. `https://restrovia-api.onrender.com` |
 | `VITE_CUSTOMER_URL` | the customer domain (used to build table QR codes) |
 | `NODE_VERSION` | `20` |
 
@@ -312,9 +312,9 @@ Which one a visitor sees is decided by the host they arrived on, resolved by the
 
 1. an explicit slug, if the build is pinned to one (development, one-off builds)
 2. a custom domain attached to a restaurant
-3. a subdomain of `PLATFORM_DOMAIN` — `delight-food.delightful.app` → `delight-food`
+3. a subdomain of `PLATFORM_DOMAIN` — `delight-food.restrovia.app` → `delight-food`
 
-Point a wildcard CNAME (`*.delightful.app`) at the customer-app deployment and every
+Point a wildcard CNAME (`*.restrovia.app`) at the customer-app deployment and every
 restaurant has a working storefront the moment it is created — no DNS, no build, no
 redeploy. A client who wants their own domain points a CNAME at the same deployment,
 and you attach it under **Domains** on the platform screen; it works on the next

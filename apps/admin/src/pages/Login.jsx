@@ -6,7 +6,7 @@ const DEMO = [
   { label: 'Restaurant owner', email: 'owner@delightfood.in',   password: 'owner123' },
   { label: 'Manager',          email: 'manager@delightfood.in', password: 'manager123' },
   { label: 'Kitchen staff',    email: 'staff@delightfood.in',   password: 'staff123' },
-  { label: 'Platform admin',   email: 'platform@delightful.app', password: 'platform123' },
+  { label: 'Platform admin',   email: 'platform@restrovia.app', password: 'platform123' },
 ];
 
 export default function Login() {
@@ -40,7 +40,7 @@ export default function Login() {
         <div className="login-brand">
           <span className="brand-mark">◆</span>
           <div>
-            <strong>Delightful</strong>
+            <strong>Restrovia</strong>
             <span>Restaurant admin</span>
           </div>
         </div>

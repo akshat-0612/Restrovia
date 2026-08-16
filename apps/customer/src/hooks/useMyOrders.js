@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, RESTAURANT_SLUG } from '../lib/api';
 
 // Namespaced by slug so two restaurants open in one browser keep separate histories.
-const STORAGE_KEY = `delightful:orders:${RESTAURANT_SLUG}`;
+const STORAGE_KEY = `restrovia:orders:${RESTAURANT_SLUG}`;
 
 const TERMINAL = ['COMPLETED', 'CANCELLED'];
 const POLL_MS = 12000;

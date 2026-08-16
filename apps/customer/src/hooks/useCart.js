@@ -4,7 +4,7 @@ import { RESTAURANT_SLUG } from '../lib/api';
 
 // Namespaced by slug so two restaurants opened in the same browser keep
 // separate carts.
-const STORAGE_KEY = `delightful:cart:${RESTAURANT_SLUG}`;
+const STORAGE_KEY = `restrovia:cart:${RESTAURANT_SLUG}`;
 
 function readStored() {
   try {

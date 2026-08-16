@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatCurrency } from '@shared';
 
-const NAME_KEY = 'delightful:customer';
+const NAME_KEY = 'restrovia:customer';
 
 /**
  * Collects the three things a dine-in order actually needs: who you are, where

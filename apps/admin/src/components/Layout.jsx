@@ -55,7 +55,7 @@ export default function Layout({ children, liveCount = 0 }) {
         <div className="sidebar-brand">
           <span className="brand-mark">◆</span>
           <div>
-            <strong>Delightful</strong>
+            <strong>Restrovia</strong>
             <span>Admin</span>
           </div>
         </div>

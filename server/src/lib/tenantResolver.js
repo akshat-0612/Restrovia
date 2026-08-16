@@ -47,7 +47,7 @@ export function requestHostname(req) {
 /**
  * Subdomains of the platform domain map straight to a slug, so every restaurant
  * has a working address the moment it is created — no DNS, no domain row.
- * `delight-food.delightful.app` → `delight-food`.
+ * `delight-food.restrovia.app` → `delight-food`.
  */
 function slugFromPlatformSubdomain(hostname) {
   const platform = normalizeHostname(process.env.PLATFORM_DOMAIN);

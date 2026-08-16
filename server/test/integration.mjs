@@ -31,7 +31,7 @@ console.log('\n── AUTH & RBAC ──');
 const owner    = await login('owner@delightfood.in', 'owner123');
 const manager  = await login('manager@delightfood.in', 'manager123');
 const staff    = await login('staff@delightfood.in', 'staff123');
-const platform = await login('platform@delightful.app', 'platform123');
+const platform = await login('platform@restrovia.app', 'platform123');
 const rival    = await login('owner@urbanslice.in', 'owner123');
 ok(owner && manager && staff && platform && rival, 'all five roles can sign in');
 
@@ -57,7 +57,7 @@ for (let round = 0; round < 6 && switching; round++) {
     ['owner@delightfood.in', 'owner123'],
     ['manager@delightfood.in', 'manager123'],
     ['staff@delightfood.in', 'staff123'],
-    ['platform@delightful.app', 'platform123'],
+    ['platform@restrovia.app', 'platform123'],
   ]) {
     if ((await call('/auth/login', { method: 'POST', body: { email, password } })).status !== 200) switching = false;
   }

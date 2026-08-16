@@ -1,4 +1,4 @@
-// Delightful — multi-tenant restaurant ordering platform
+// Restrovia — multi-tenant restaurant ordering platform
 // One database, many restaurants. Every tenant-owned row carries restaurantId,
 // and every query path is scoped by it in middleware (see src/middleware/tenant.js).
 
