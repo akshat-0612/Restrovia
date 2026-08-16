@@ -359,20 +359,51 @@ chiefly the admin portal.
 3. Create the platform-admin account with the snippet above.
 4. Deploy the admin portal to Pages with `VITE_API_URL`.
 5. Set `CORS_ORIGINS` on Render to the admin URL and redeploy.
-6. Deploy the customer app to Pages — once, with no slug — and point a wildcard
-   CNAME (`*.yourdomain`) at it. Set `PLATFORM_DOMAIN` on the API to match.
-7. Sign in and onboard your first restaurant. Its storefront is live immediately at
-   `<slug>.yourdomain`. Attach a custom domain later from the same screen.
+6. Sign in and onboard your first restaurant. Note its slug.
+7. Deploy the customer app to Pages. Cloudflare gives it a free
+   `<project>.pages.dev` address — no domain needed.
+8. Tell the API which restaurant that address belongs to, by either route below.
+9. Add the customer URL to `CORS_ORIGINS` on Render and redeploy.
 
-Selling to the next restaurant is then step 7 alone.
+### Pointing an address at a restaurant
 
-### Custom domains
+The storefront has to know which restaurant a visitor is asking for. **Owning a
+domain is not required for this** — pick whichever route fits.
 
-Add the client's domain to the single Pages project, have them point a CNAME at it,
-then attach it to their restaurant under **Domains**. Keep the deployment in **your**
-Cloudflare account rather than theirs: one place to ship fixes, your source stays
-yours, and suspending a non-paying client is an `isActive` toggle on their restaurant
-row rather than a negotiation.
+**A · Register the free Pages address as the restaurant's domain.** In the platform
+admin, open the restaurant and add `restrovia-order.pages.dev` under **Domains**.
+The API resolves the restaurant from the request host and the storefront works
+immediately. Costs nothing.
+
+**B · Pin the deployment to one restaurant.** Set `VITE_RESTAURANT_SLUG=<slug>` on
+that Pages project. The build carries the slug and never consults the host. Also
+free, and the simplest thing to reason about.
+
+Both give one restaurant per Pages project. Pages projects are free and you can
+create as many as you have clients, so **the whole platform runs at zero cost** —
+you just repeat step 7 per restaurant.
+
+### When a domain becomes worth buying
+
+One domain (around ₹800/year) buys two things, neither of them required to run:
+
+- **Branded URLs.** `order.theirrestaurant.com` instead of `xyz-order.pages.dev`,
+  which matters more for selling than for working.
+- **One deployment for every client.** Point a wildcard CNAME (`*.yourdomain`) at a
+  single customer Pages project and set `PLATFORM_DOMAIN` on the API to match. Each
+  new restaurant is then live at `<slug>.yourdomain` the moment you onboard it — no
+  new project, no new build. Onboarding collapses to one form submission.
+
+Until you have several clients, route A or B is genuinely fine. Revisit this when
+repeating step 7 starts to annoy you.
+
+### Custom domains for a client
+
+Once you do own a domain, add the client's hostname to the customer Pages project,
+have them point a CNAME at it, then attach it to their restaurant under **Domains**.
+Keep the deployment in **your** Cloudflare account rather than theirs: one place to
+ship fixes, your source stays yours, and suspending a non-paying client is an
+`isActive` toggle on their restaurant row rather than a negotiation.
 
 ### Known limits of the free tier
 
