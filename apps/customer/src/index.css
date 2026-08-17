@@ -1,30 +1,69 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  /* Overridden at runtime from the restaurant record — these are the fallbacks. */
-  --brand: #e8552d;
+  /**
+   * Every value here is a fallback, overwritten at boot from the restaurant
+   * record (see useStorefrontTheme). They are the "Midnight" theme's values, so
+   * the first paint — before the storefront config has landed — is a real theme
+   * rather than an unstyled flash.
+   *
+   * The catalogue these mirror lives in packages/shared/src/storefront-themes.js.
+   */
+  --brand:  #e8552d;
   --accent: #f5b301;
+  /* Ink that stays legible on top of those two fills. */
+  --on-brand:  #ffffff;
+  --on-accent: #17130f;
 
-  --bg:        #101012;
-  --surface:   #18181b;
-  --surface-2: #1f1f23;
-  --surface-3: #27272c;
-  --border:    #2c2c32;
-  --border-strong: #3a3a42;
+  --bg:        #0c0c10;
+  --bg-tint:   #131319;
+  --surface:   #17171c;
+  --surface-2: #1e1e25;
+  --surface-3: #26262e;
+  --border:        #2a2a33;
+  --border-strong: #3a3a45;
 
-  --text:       #ececef;
-  --text-muted: #9a9aa4;
-  --text-dim:   #6b6b74;
+  --text:       #ecedf1;
+  --text-muted: #9b9daa;
+  --text-dim:   #6a6c79;
 
   --green: #3ecf8e;
   --red:   #f2555a;
   --amber: #f5b301;
+  /* Ink for the tick inside a filled green dot. */
+  --on-green: #08281a;
+
+  /**
+   * Brand and accent as *text on the page*, rather than as a fill.
+   *
+   * An owner may pick a pale yellow or a lime, and either is unreadable as type
+   * on their own background. Mixing toward --text keeps the brand recognisable
+   * while pinning contrast to the theme rather than to the colour choice. These
+   * are derived, so they stay correct as --brand and --text are overwritten.
+   */
+  --brand-ink:  color-mix(in srgb, var(--brand) 78%, var(--text));
+  --accent-ink: color-mix(in srgb, var(--accent) 78%, var(--text));
 
   --radius:    14px;
   --radius-sm: 10px;
-  --shadow:    0 10px 30px rgba(0, 0, 0, 0.45);
+  --radius-lg: 22px;
+  --shadow:      0 18px 44px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.32);
 
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-head: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --head-weight:  700;
+  --head-spacing: -0.018em;
+  --head-case:    none;
+
+  /* Gradient laid over hero photos so type stays readable on any picture. */
+  --hero-scrim: linear-gradient(180deg, rgba(8,8,11,0.2) 0%, rgba(8,8,11,0.34) 52%, rgba(12,12,16,0.9) 76%, rgba(12,12,16,0.995) 100%);
+  /* Translucent fill for the sticky bar and other elements that float over content. */
+  --glass: rgba(15, 15, 19, 0.86);
+  /* Wash over a full-page backdrop photo, so the menu stays the thing you read. */
+  --photo-tint: rgba(10, 10, 14, 0.74);
+
+  font-family: var(--font-body);
   line-height: 1.5;
   color: var(--text);
   background-color: var(--bg);
@@ -35,6 +74,14 @@
 
 body { min-height: 100vh; background-color: var(--bg); }
 #root { min-height: 100vh; }
+
+/* Headings take the theme's display face; everything else takes the body face. */
+h1, h2, h3, h4 {
+  font-family: var(--font-head);
+  font-weight: var(--head-weight);
+  letter-spacing: var(--head-spacing);
+  line-height: 1.2;
+}
 
 button { cursor: pointer; font-family: inherit; color: inherit; border: none; background: none; }
 button:disabled { cursor: not-allowed; }

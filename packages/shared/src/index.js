@@ -89,3 +89,16 @@ export function formatHour(hour) {
 export function cartKeyFor(itemId, variantLabel) {
   return variantLabel ? `${itemId}::${variantLabel}` : String(itemId);
 }
+
+export {
+  STOREFRONT_THEMES,
+  STOREFRONT_THEME_IDS,
+  DEFAULT_STOREFRONT_THEME,
+  storefrontTheme,
+  storefrontVars,
+  readableInk,
+  luminanceOf,
+  HERO_STYLES,
+  HERO_STYLE_IDS,
+  DEFAULT_HERO_STYLE,
+} from './storefront-themes.js';

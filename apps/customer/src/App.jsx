@@ -4,9 +4,12 @@ import { api } from './lib/api';
 import { useCart } from './hooks/useCart';
 import { useMyOrders } from './hooks/useMyOrders';
 import { useRestaurant, flattenMenu } from './hooks/useRestaurant';
+import { useStorefrontTheme } from './hooks/useStorefrontTheme';
 import { cartKeyFor, formatCurrency } from '@shared';
 
 import Header from './components/Header';
+import StorefrontHero from './components/StorefrontHero';
+import FeaturedRail from './components/FeaturedRail';
 import MenuItemCard from './components/MenuItemCard';
 import ItemDetailSheet from './components/ItemDetailSheet';
 import CartSidebar from './components/CartSidebar';
@@ -14,23 +17,12 @@ import CheckoutSheet from './components/CheckoutSheet';
 import OrderTracker from './components/OrderTracker';
 import MyOrders from './components/MyOrders';
 
-/** Applies the restaurant's brand colours as CSS variables at the document root. */
-function useBrandTheme(restaurant) {
-  useEffect(() => {
-    if (!restaurant) return;
-    const root = document.documentElement;
-    root.style.setProperty('--brand', restaurant.primaryColor);
-    root.style.setProperty('--accent', restaurant.accentColor);
-    document.title = `${restaurant.name} — Order from your table`;
-  }, [restaurant]);
-}
-
 export default function App() {
   const { status, restaurant, categories, error } = useRestaurant();
   const menuItems = useMemo(() => flattenMenu(categories), [categories]);
 
   const cart = useCart(menuItems);
-  useBrandTheme(restaurant);
+  useStorefrontTheme(restaurant);
 
   const [activeCategory, setActiveCategory] = useState('All');
   const [search, setSearch] = useState('');
@@ -138,6 +130,13 @@ export default function App() {
 
   const resultCount = visibleCategories.reduce((s, c) => s + c.items.length, 0);
 
+  // The rail only earns its space on an unfiltered menu — see FeaturedRail.
+  const browsing = activeCategory === 'All' && search.trim() === '';
+  const featured = useMemo(
+    () => (browsing ? menuItems.filter((i) => i.isFeatured && i.isAvailable).slice(0, 8) : []),
+    [browsing, menuItems]
+  );
+
   /* ── Placing the order ── */
   async function handleSubmitOrder(form) {
     setSubmitting(true);
@@ -212,9 +211,25 @@ export default function App() {
   }
 
   const symbol = restaurant.currencySymbol;
+  const photos = restaurant.heroStyle === 'off' ? [] : (restaurant.photos || []);
+  // Only the first photo becomes the page backdrop — a wash that changed under
+  // the menu while someone was reading it would be a distraction, not a feature.
+  const backdrop = restaurant.heroStyle === 'backdrop' ? photos[0] : null;
 
   return (
-    <div className="app">
+    <div className={`app ${backdrop ? 'has-backdrop' : ''}`}>
+      {backdrop && (
+        <div className="app-backdrop" aria-hidden>
+          <img src={backdrop.url} alt="" />
+        </div>
+      )}
+
+      <StorefrontHero
+        restaurant={restaurant}
+        tableLabel={presetTable?.label}
+        photos={photos}
+      />
+
       <Header
         restaurant={restaurant}
         categories={categories}
@@ -237,6 +252,8 @@ export default function App() {
       />
 
       <main className="main-content">
+        <FeaturedRail items={featured} currencySymbol={symbol} onOpen={setDetailItem} />
+
         {resultCount === 0 ? (
           <div className="empty-menu">
             <span className="empty-icon">🍴</span>
@@ -248,9 +265,11 @@ export default function App() {
         ) : (
           visibleCategories.map((category) => (
             <section key={category.id} className="category-section">
-              <div className="category-section-header">
-                <span>{category.icon} {category.name}</span>
-                <span className="category-section-count">{category.items.length}</span>
+              <div className="section-head">
+                <span className="section-icon" aria-hidden>{category.icon}</span>
+                <h2>{category.name}</h2>
+                <span className="section-rule" aria-hidden />
+                <span className="section-count">{category.items.length}</span>
               </div>
               <div className="menu-grid">
                 {category.items.map((item) => (
@@ -270,9 +289,14 @@ export default function App() {
         )}
 
         <footer className="menu-footer">
-          <p>{restaurant.logoEmoji} {restaurant.name}</p>
+          <div className="footer-mark">
+            {restaurant.logoUrl
+              ? <img src={restaurant.logoUrl} alt="" />
+              : restaurant.logoEmoji}
+          </div>
+          <h2>{restaurant.name}</h2>
           {restaurant.address && <p>{restaurant.address}{restaurant.city ? `, ${restaurant.city}` : ''}</p>}
-          {restaurant.phone && <p>{restaurant.phone}</p>}
+          {restaurant.phone && <p><a href={`tel:${restaurant.phone}`}>{restaurant.phone}</a></p>}
           <p className="menu-footer-hours">Open {restaurant.openingTime} – {restaurant.closingTime}</p>
         </footer>
       </main>

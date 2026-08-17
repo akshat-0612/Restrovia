@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { serialize } from '../lib/prisma.js';
 import { ApiError, asyncHandler } from '../lib/errors.js';
+import { publicImageUrl } from '../lib/images.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -15,17 +16,30 @@ const loginSchema = z.object({
   restaurantSlug: z.string().optional(),
 });
 
-function publicUser(user) {
+/**
+ * The signed-in user, plus just enough of their restaurant for the portal's
+ * chrome — the sidebar mark, the currency on every figure, the timezone every
+ * date is read in.
+ *
+ * `logoUrl` is resolved the same way the customer storefront resolves it: an
+ * upload wins over a configured URL. Without it the admin portal had no way to
+ * show an owner the logo they had uploaded, and fell back to the emoji on every
+ * screen — which read as the upload having silently failed.
+ */
+function publicUser(req, user) {
+  const r = user.restaurant;
   return serialize({
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
     restaurantId: user.restaurantId,
-    restaurant: user.restaurant
-      ? { id: user.restaurant.id, name: user.restaurant.name, slug: user.restaurant.slug,
-          logoEmoji: user.restaurant.logoEmoji, currencySymbol: user.restaurant.currencySymbol,
-          timezone: user.restaurant.timezone }
+    restaurant: r
+      ? { id: r.id, name: r.name, slug: r.slug,
+          logoEmoji: r.logoEmoji,
+          logoUrl: r.logoImageId ? publicImageUrl(req, r.logoImageId) : r.logoUrl,
+          currencySymbol: r.currencySymbol,
+          timezone: r.timezone }
       : null,
   });
 }
@@ -60,11 +74,11 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   await prisma.user.update({ where: { id: matched.id }, data: { lastLoginAt: new Date() } });
 
-  res.json({ token: signToken(matched), user: publicUser(matched) });
+  res.json({ token: signToken(matched), user: publicUser(req, matched) });
 }));
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: publicUser(req.user) });
+  res.json({ user: publicUser(req, req.user) });
 });
 
 router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {

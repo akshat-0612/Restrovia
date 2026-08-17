@@ -4,6 +4,9 @@ import { useApi } from '../lib/hooks';
 import { useToast } from '../components/toast-context';
 import { Card, ErrorState, Spinner } from '../components/States';
 import ImagePicker from '../components/ImagePicker';
+import StorefrontPreview from '../components/StorefrontPreview';
+import StorefrontPhotos from '../components/StorefrontPhotos';
+import { STOREFRONT_THEMES, HERO_STYLES } from '@shared';
 
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'America/New_York'];
 
@@ -182,6 +185,81 @@ export default function Settings() {
         </div>
       </Card>
 
+      <Card title="Customer app theme" subtitle="The look your menu wears — pick one and see it before you save"
+        action={<button className="btn btn-primary btn-sm" disabled={busy}
+          onClick={() => save(['menuTheme', 'heroStyle'])}>Save</button>}>
+        <div className="form">
+          <div className="theme-grid">
+            {STOREFRONT_THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                className={`theme-tile ${form.menuTheme === theme.id ? 'chosen' : ''}`}
+                onClick={() => setForm((f) => ({ ...f, menuTheme: theme.id }))}
+              >
+                <StorefrontPreview
+                  theme={theme.id}
+                  restaurant={form}
+                  photo={form.photos?.[0]?.image}
+                  heroStyle={form.heroStyle}
+                  compact
+                />
+                <span className="theme-tile-name">
+                  {theme.name}
+                  {form.menuTheme === theme.id && <em>✓ chosen</em>}
+                </span>
+                <span className="theme-tile-note">{theme.note}</span>
+              </button>
+            ))}
+          </div>
+
+          <p className="field-hint">
+            Your primary and accent colours carry across every theme — a theme decides
+            the paper, your colours are the ink. Change them under <strong>Branding</strong> above.
+          </p>
+
+          <div className="form-section">Your photos on the storefront</div>
+          <div className="hero-style-row">
+            {HERO_STYLES.map((style) => (
+              <label key={style.id} className={`hero-style ${form.heroStyle === style.id ? 'chosen' : ''}`}>
+                <input
+                  type="radio"
+                  name="heroStyle"
+                  value={style.id}
+                  checked={form.heroStyle === style.id}
+                  onChange={() => setForm((f) => ({ ...f, heroStyle: style.id }))}
+                />
+                <strong>{style.name}</strong>
+                <span>{style.note}</span>
+              </label>
+            ))}
+          </div>
+
+          {form.heroStyle !== 'off' && (form.photos?.length ?? 0) === 0 && (
+            <p className="field-hint">
+              No photos uploaded yet, so your storefront opens on your two brand colours.
+              Add one below and it becomes the picture customers see first.
+            </p>
+          )}
+
+          <div className="form-section">Preview</div>
+          <StorefrontPreview
+            theme={form.menuTheme}
+            restaurant={form}
+            photo={form.photos?.[0]?.image}
+            heroStyle={form.heroStyle}
+          />
+        </div>
+      </Card>
+
+      <Card title="Storefront photos"
+        subtitle="Pictures of your restaurant, shown at the top of your menu">
+        <StorefrontPhotos
+          photos={form.photos ?? []}
+          onChange={(photos) => setForm((f) => ({ ...f, photos }))}
+        />
+      </Card>
+
       <Card title="Billing rules" subtitle="How totals are calculated on every order"
         action={<button className="btn btn-primary btn-sm" disabled={busy}
           onClick={() => save(['currencySymbol', 'taxPercent', 'taxLabel', 'taxInclusive', 'minOrderAmount', 'avgPrepTimeMins', 'timezone'])}>Save</button>}>
@@ -273,18 +351,6 @@ export default function Settings() {
           </div>
           <button type="submit" className="btn btn-primary">Change password</button>
         </form>
-      </Card>
-
-      <Card title="Deployment" subtitle="What to configure when you deploy this restaurant's customer app">
-        <div className="deploy-block">
-          <p>Build the customer app with this environment variable and it becomes this restaurant&apos;s storefront:</p>
-          <pre className="code-block">VITE_RESTAURANT_SLUG={form.slug}
-VITE_API_URL=https://your-api-domain.com</pre>
-          <p className="field-hint">
-            The slug is fixed for the life of the restaurant — every order, table QR code and
-            saved cart is keyed to it.
-          </p>
-        </div>
       </Card>
     </>
   );

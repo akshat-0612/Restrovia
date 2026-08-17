@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { useApi } from '../../lib/hooks';
 import { useAuth } from '../../context/auth-context';
 import { useToast } from '../../components/toast-context';
+import RestaurantMark from '../../components/RestaurantMark';
 import Modal from '../../components/Modal';
 import StatCard from '../../components/StatCard';
 import { Card, ErrorState, Spinner } from '../../components/States';
@@ -104,7 +105,7 @@ export default function PlatformRestaurants({ standalone = false }) {
                 <tr key={restaurant.id}>
                   <td>
                     <div className="cell-inline">
-                      <span className="restaurant-emoji">{restaurant.logoEmoji}</span>
+                      <RestaurantMark restaurant={restaurant} className="restaurant-emoji" />
                       <div className="cell-stack">
                         <strong>{restaurant.name}</strong>
                         <span>{restaurant.city || '—'}</span>

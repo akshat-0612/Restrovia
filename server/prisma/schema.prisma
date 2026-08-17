@@ -39,6 +39,15 @@ model Restaurant {
   /// Which printable design the table QR codes use. The owner picks it once and
   /// every table prints to match, so a café's tents look like the café.
   qrTheme String @default("classic")
+
+  /// Which look the customer app wears — see STOREFRONT_THEMES in packages/shared.
+  /// A theme decides the paper (background, surfaces, corners, headline face);
+  /// the two brand colours below decide the ink, and survive a change of theme.
+  menuTheme String @default("midnight")
+  /// How the restaurant's own photos are used on the storefront:
+  /// "banner" (top of the menu), "backdrop" (also washed behind the page), "off".
+  heroStyle String @default("banner")
+
   primaryColor String  @default("#e8552d")
   accentColor  String  @default("#f5b301")
 
@@ -79,6 +88,7 @@ model Restaurant {
 
   users      User[]
   images     Image[] @relation("RestaurantImages")
+  photos     StorefrontPhoto[]
   categories Category[]
   menuItems  MenuItem[]
   tables     RestaurantTable[]
@@ -410,7 +420,34 @@ model Image {
   restaurant Restaurant   @relation("RestaurantImages", fields: [restaurantId], references: [id], onDelete: Cascade)
   menuItems  MenuItem[]
   logoFor    Restaurant[] @relation("RestaurantLogo")
+  usedAsPhoto StorefrontPhoto[]
 
   @@index([restaurantId])
   @@map("images")
+}
+
+/// A photo of the restaurant itself — the room, the counter, the terrace — shown
+/// on the customer app's storefront.
+///
+/// Its own table rather than a column on Restaurant because there are several,
+/// they are ordered, and the first one is the hero: reordering is how an owner
+/// changes the picture customers see first, without re-uploading anything.
+///
+/// Cascades from Image, so deleting the picture from the library cannot leave a
+/// gallery slot pointing at bytes that are gone.
+model StorefrontPhoto {
+  id           String @id @default(cuid())
+  restaurantId String
+  imageId      String
+  /// Optional overlay line, e.g. "Our terrace, open till 11".
+  caption      String?
+  sortOrder    Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  image      Image      @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, sortOrder])
+  @@map("storefront_photos")
 }

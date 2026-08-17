@@ -71,13 +71,24 @@ router.get('/images/:id', asyncHandler(async (req, res) => {
   res.send(image.data);
 }));
 
-/** Public storefront config — branding, tax, hours. Drives the whole customer app. */
-router.get('/restaurant', resolvePublicTenant, (req, res) => {
+/** Public storefront config — branding, theme, tax, hours. Drives the whole customer app. */
+router.get('/restaurant', resolvePublicTenant, asyncHandler(async (req, res) => {
   const r = req.restaurant;
+
+  // Skipped entirely when the owner has turned photos off, so a storefront that
+  // shows none never pays for the query.
+  const photos = r.heroStyle === 'off' ? [] : await prisma.storefrontPhoto.findMany({
+    where: { restaurantId: r.id },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, caption: true, imageId: true },
+  });
+
   res.json(serialize({
     id: r.id, slug: r.slug, name: r.name, tagline: r.tagline,
     logoEmoji: r.logoEmoji, logoUrl: r.logoImageId ? publicImageUrl(req, r.logoImageId) : r.logoUrl,
     primaryColor: r.primaryColor, accentColor: r.accentColor,
+    menuTheme: r.menuTheme, heroStyle: r.heroStyle,
+    photos: photos.map((p) => ({ id: p.id, caption: p.caption, url: publicImageUrl(req, p.imageId) })),
     phone: r.phone, address: r.address, city: r.city,
     currency: r.currency, currencySymbol: r.currencySymbol,
     taxPercent: Number(r.taxPercent), taxLabel: r.taxLabel, taxInclusive: r.taxInclusive,
@@ -85,7 +96,7 @@ router.get('/restaurant', resolvePublicTenant, (req, res) => {
     isAcceptingOrders: r.isAcceptingOrders, closedMessage: r.closedMessage,
     openingTime: r.openingTime, closingTime: r.closingTime,
   }));
-});
+}));
 
 /** The full menu, grouped by category. Unavailable items are included but flagged. */
 router.get('/menu', resolvePublicTenant, asyncHandler(async (req, res) => {

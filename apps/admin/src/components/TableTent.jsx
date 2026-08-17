@@ -13,6 +13,7 @@
  */
 
 import { qrPath } from './tent-themes';
+import RestaurantMark from './RestaurantMark';
 
 export default function TableTent({ restaurant, table, url, theme = 'classic', preview = false }) {
   const brand = restaurant?.primaryColor || '#c4451f';
@@ -27,7 +28,7 @@ export default function TableTent({ restaurant, table, url, theme = 'classic', p
       style={{ '--tent-brand': brand, '--tent-accent': accent }}
     >
       <div className="tent-head">
-        <span className="tent-mark" aria-hidden>{restaurant?.logoEmoji || '🍽️'}</span>
+        <RestaurantMark restaurant={restaurant} className="tent-mark" />
         <span className="tent-name">{name}</span>
         {restaurant?.tagline && <span className="tent-tagline">{restaurant.tagline}</span>}
       </div>

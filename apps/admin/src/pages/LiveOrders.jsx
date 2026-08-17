@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatTime, minutesSince, ORDER_STATUS } from '@shared';
 import { api } from '../lib/api';
-import { usePolling, useOrderChime } from '../lib/hooks';
+import { usePolling, useOrderChime, useMediaQuery } from '../lib/hooks';
 import { useAuth } from '../context/auth-context';
 import { useToast } from '../components/toast-context';
 import { EmptyState, ErrorState, Spinner } from '../components/States';
@@ -18,6 +18,15 @@ const COLUMNS = [
 /** An order older than this in a pre-ready state gets flagged on the board. */
 const LATE_AFTER_MINS = 25;
 
+/**
+ * Below this the board is one column wide, so all four stages stack and a busy
+ * "New" queue buries everything under it. At that width the board shows one
+ * stage at a time instead, chosen from the switcher.
+ *
+ * Must stay in step with the `.kanban` single-column rule in index.css.
+ */
+const NARROW = '(max-width: 860px)';
+
 export default function LiveOrders() {
   const { user } = useAuth();
   const toast = useToast();
@@ -27,6 +36,10 @@ export default function LiveOrders() {
   const { data, error, loading, refresh } = usePolling((signal) => api.liveOrders(signal), 10000);
   const [soundOn, setSoundOn] = useState(() => localStorage.getItem('restrovia:sound') !== 'off');
   const [busyId, setBusyId] = useState(null);
+  const narrow = useMediaQuery(NARROW);
+  // Which stage the switcher is on. "New" is where the kitchen's attention is
+  // owed, so it is where a phone opens. Ignored entirely on a wide screen.
+  const [stage, setStage] = useState('PLACED');
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   // Ticks once a minute so the "x min ago" labels stay honest between polls.
@@ -92,6 +105,13 @@ export default function LiveOrders() {
     orders: orders.filter((o) => o.status === col.status),
   }));
 
+  // On a wide screen every stage is on the board at once, so the switcher's
+  // selection is deliberately not applied — rotating a tablet back to landscape
+  // must not leave three quarters of the kitchen hidden.
+  const visible = narrow && stage !== 'ALL'
+    ? grouped.filter((col) => col.status === stage)
+    : grouped;
+
   return (
     <>
       <header className="page-head">
@@ -114,8 +134,34 @@ export default function LiveOrders() {
         <EmptyState icon="✨" title="All caught up"
           message="New orders will appear here the moment a customer places one." />
       ) : (
+        <>
+        {narrow && (
+          <div className="board-filter" aria-label="Show one stage">
+            <button
+              type="button"
+              className={`board-filter-btn ${stage === 'ALL' ? 'active' : ''}`}
+              aria-pressed={stage === 'ALL'}
+              onClick={() => setStage('ALL')}
+            >
+              All <span className="board-filter-count">{orders.length}</span>
+            </button>
+            {grouped.map((column) => (
+              <button
+                key={column.status}
+                type="button"
+                className={`board-filter-btn ${stage === column.status ? 'active' : ''}`}
+                aria-pressed={stage === column.status}
+                onClick={() => setStage(column.status)}
+              >
+                <span className={`kanban-dot status-${column.status.toLowerCase()}`} />
+                {column.title} <span className="board-filter-count">{column.orders.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="kanban">
-          {grouped.map((column) => (
+          {visible.map((column) => (
             <section key={column.status} className="kanban-col">
               <header className="kanban-col-head">
                 <span className={`kanban-dot status-${column.status.toLowerCase()}`} />
@@ -124,7 +170,10 @@ export default function LiveOrders() {
               </header>
 
               <div className="kanban-body">
-                {column.orders.length === 0 && <p className="kanban-empty">—</p>}
+                {column.orders.length === 0 && (
+                  // A lone "—" reads as broken when it is the only thing on screen.
+                  <p className="kanban-empty">{narrow ? 'Nothing at this stage.' : '—'}</p>
+                )}
                 {column.orders.map((order) => {
                   const elapsed = minutesSince(order.placedAt);
                   const late = elapsed > LATE_AFTER_MINS && order.status !== 'READY';
@@ -183,6 +232,7 @@ export default function LiveOrders() {
             </section>
           ))}
         </div>
+        </>
       )}
 
       {cancelTarget && (

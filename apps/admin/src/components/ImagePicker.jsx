@@ -19,16 +19,57 @@ import Modal from './Modal';
 const OUTPUT = {
   menu: { width: 800, height: 600, aspect: 4 / 3, label: '4:3 — matches the menu cards' },
   logo: { width: 512, height: 512, aspect: 1, label: 'Square — matches the header mark' },
+  /**
+   * Wider and larger than the others: this one is stretched across the full
+   * width of a phone and often of a laptop, where a 800px crop would show its
+   * pixels. 16:9 is what a phone camera hands back in landscape, so the crop
+   * usually costs the owner nothing.
+   */
+  hero: { width: 1600, height: 900, aspect: 16 / 9, label: '16:9 — spans the top of your menu' },
 };
 
-/** WebP where supported; a canvas silently returns PNG otherwise, which we detect. */
-function encode(canvas) {
-  const webp = canvas.toDataURL('image/webp', 0.82);
-  if (webp.startsWith('data:image/webp')) return webp;
-  return canvas.toDataURL('image/jpeg', 0.85);
+/**
+ * The server's ceiling, less a little headroom for the base64 overhead of the
+ * request body. Kept in step with MAX_BYTES in server/src/routes/admin/images.js.
+ */
+const BUDGET_BYTES = 560 * 1024;
+
+/** Bytes a base64 data URL actually carries, without decoding it. */
+function byteLength(dataUrl) {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  return Math.floor(base64.length * 0.75);
 }
 
-export default function ImagePicker({ kind = 'menu', value, onChange, label = 'Photo' }) {
+/**
+ * WebP where supported; a canvas silently returns PNG otherwise, which we detect.
+ *
+ * Quality steps down until the result fits the server's ceiling. A 4:3 menu crop
+ * is comfortably inside it at first ask, but a busy 16:9 hero photo — a crowded
+ * room, a lot of fine detail — can exceed it, and an owner should not be told to
+ * "try a smaller one" when re-encoding is what is actually needed.
+ */
+function encode(canvas) {
+  const type = canvas.toDataURL('image/webp', 0.8).startsWith('data:image/webp')
+    ? 'image/webp'
+    : 'image/jpeg';
+
+  let out = '';
+  for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+    out = canvas.toDataURL(type, quality);
+    if (byteLength(out) <= BUDGET_BYTES) return out;
+  }
+  return out;   // best effort; the server will say so if it is still too big
+}
+
+/**
+ * `immediate` says whether choosing a picture is the whole action.
+ *
+ * It usually is not: the upload puts bytes in the library, and the surrounding
+ * form's Save is what attaches them. Saying "Image added" at upload time read as
+ * finished, so logos were picked, left unsaved, and reported as not working —
+ * with a stranded row in the images table for each attempt.
+ */
+export default function ImagePicker({ kind = 'menu', value, onChange, label = 'Photo', immediate = false }) {
   const toast = useToast();
   const spec = OUTPUT[kind];
   const fileRef = useRef(null);
@@ -54,7 +95,8 @@ export default function ImagePicker({ kind = 'menu', value, onChange, label = 'P
       const { image } = await api.uploadImage({ dataUrl, width: spec.width, height: spec.height });
       onChange(image);
       setSource(null);
-      toast.success(`Image added · ${Math.round(image.sizeBytes / 1024)}KB`);
+      // When the caller applies it itself, it owns the outcome message too.
+      if (!immediate) toast.success('Image uploaded — press Save to apply it');
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -84,6 +126,10 @@ export default function ImagePicker({ kind = 'menu', value, onChange, label = 'P
           <strong>Upload a photo</strong>
           <span>{spec.label}</span>
         </button>
+      )}
+
+      {!immediate && value?.url && (
+        <span className="field-hint">Applied when you press Save on this section.</span>
       )}
 
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={choose} />

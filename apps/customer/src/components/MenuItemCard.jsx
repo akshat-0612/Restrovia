@@ -11,7 +11,7 @@ export default function MenuItemCard({ item, currencySymbol, quantityOf, onAdd, 
 
   return (
     <article
-      className={`menu-card ${item.isAvailable ? '' : 'sold-out'}`}
+      className={`menu-card ${item.isAvailable ? '' : 'sold-out'} ${qty > 0 ? 'in-cart' : ''}`}
       onClick={() => item.isAvailable && onOpen(item)}
     >
       <div className="menu-card-img-wrap">
@@ -19,12 +19,19 @@ export default function MenuItemCard({ item, currencySymbol, quantityOf, onAdd, 
           ? <img src={item.imageUrl} alt="" className="menu-card-image" loading="lazy" />
           : <div className="menu-card-image-placeholder">{item.categoryIcon}</div>}
 
+        {/* Darkens the foot of the photo so the badges sitting on it stay readable
+            whatever the picture happens to be. Only over an actual photo — on the
+            placeholder it would just dull the one mark the card has. */}
+        {item.imageUrl && <div className="menu-card-wash" aria-hidden />}
+
         <div className="menu-card-flags">
           <span className={`veg-dot ${item.isVeg ? 'veg' : 'nonveg'}`} title={item.isVeg ? 'Vegetarian' : 'Non-vegetarian'} />
           {item.isFeatured && item.isAvailable && <span className="flag-badge">★ Popular</span>}
         </div>
 
-        {!item.isAvailable && <div className="sold-out-overlay">Sold out</div>}
+        {item.isAvailable && <span className="menu-card-time">⏱ {item.prepTimeMins}m</span>}
+
+        {!item.isAvailable && <div className="sold-out-overlay"><span>Sold out</span></div>}
         {item.isAvailable && <div className="card-tap-hint">tap for details</div>}
       </div>
 
@@ -32,14 +39,13 @@ export default function MenuItemCard({ item, currencySymbol, quantityOf, onAdd, 
         <h3 className="menu-card-name">{item.name}</h3>
         {item.description && <p className="menu-card-desc">{item.description}</p>}
 
-        <div className="menu-card-meta">
-          {item.spiceLevel > 0 && (
+        {item.spiceLevel > 0 && (
+          <div className="menu-card-meta">
             <span className="meta-pill spice">
               {'🌶'.repeat(item.spiceLevel)} {SPICE_LABELS[item.spiceLevel]}
             </span>
-          )}
-          <span className="meta-pill">⏱ {item.prepTimeMins} min</span>
-        </div>
+          </div>
+        )}
 
         {hasVariants && (
           <div className="variant-selector" onClick={stop}>
@@ -58,7 +64,9 @@ export default function MenuItemCard({ item, currencySymbol, quantityOf, onAdd, 
         )}
 
         <div className="menu-card-footer">
-          <span className="menu-card-price">{currencySymbol}{price}</span>
+          <span className="menu-card-price">
+            <em>{currencySymbol}</em>{price}
+          </span>
 
           {!item.isAvailable ? (
             <span className="unavailable-tag">Unavailable</span>

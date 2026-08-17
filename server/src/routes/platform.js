@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma, serialize } from '../lib/prisma.js';
+import { publicImageUrl } from '../lib/images.js';
 import { ApiError, asyncHandler } from '../lib/errors.js';
 import { requireAuth, requirePlatformAdmin } from '../middleware/auth.js';
 import { round2 } from '../lib/money.js';
@@ -33,7 +34,9 @@ router.get('/restaurants', asyncHandler(async (_req, res) => {
       id: r.id, slug: r.slug, name: r.name, plan: r.plan,
       isActive: r.isActive, isAcceptingOrders: r.isAcceptingOrders,
       city: r.city, phone: r.phone, email: r.email,
-      logoEmoji: r.logoEmoji, currencySymbol: r.currencySymbol,
+      logoEmoji: r.logoEmoji,
+      logoUrl: r.logoImageId ? publicImageUrl(_req, r.logoImageId) : r.logoUrl,
+      currencySymbol: r.currencySymbol,
       createdAt: r.createdAt,
       orderCount: r._count.orders,
       userCount: r._count.users,

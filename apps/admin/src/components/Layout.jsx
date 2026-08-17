@@ -4,6 +4,7 @@ import { ROLE_LABELS } from '@shared';
 import { useAuth } from '../context/auth-context';
 import { api } from '../lib/api';
 import { useToast } from './toast-context';
+import RestaurantMark from './RestaurantMark';
 
 /** `roles` gates a link — a STAFF account simply never sees Settings or Staff. */
 const NAV = [
@@ -61,7 +62,7 @@ export default function Layout({ children, liveCount = 0 }) {
         </div>
 
         <div className="sidebar-restaurant">
-          <span className="restaurant-emoji">{restaurant?.logoEmoji || '🍽️'}</span>
+          <RestaurantMark restaurant={restaurant} className="restaurant-emoji" />
           <div className="restaurant-meta">
             <strong title={restaurant?.name}>{restaurant?.name || '—'}</strong>
             <span>/{restaurant?.slug}</span>
@@ -133,7 +134,9 @@ export default function Layout({ children, liveCount = 0 }) {
       <div className="main-col">
         <header className="topbar">
           <button className="icon-btn menu-toggle" onClick={() => setSidebarOpen((v) => !v)} aria-label="Toggle navigation">☰</button>
-          <span className="topbar-restaurant">{restaurant?.logoEmoji} {restaurant?.name}</span>
+          <span className="topbar-restaurant">
+            <RestaurantMark restaurant={restaurant} className="mark-sm" /> {restaurant?.name}
+          </span>
           {restaurant && !restaurant.isAcceptingOrders && (
             <span className="topbar-warning">Orders paused</span>
           )}

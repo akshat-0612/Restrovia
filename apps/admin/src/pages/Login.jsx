@@ -2,13 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
 
-const DEMO = [
-  { label: 'Restaurant owner', email: 'owner@delightfood.in',   password: 'owner123' },
-  { label: 'Manager',          email: 'manager@delightfood.in', password: 'manager123' },
-  { label: 'Kitchen staff',    email: 'staff@delightfood.in',   password: 'staff123' },
-  { label: 'Platform admin',   email: 'platform@restrovia.app', password: 'platform123' },
-];
-
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -67,19 +60,6 @@ export default function Login() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        {/* Seeded accounts, so a demo never stalls on "what's the password?" */}
-        <div className="login-demo">
-          <span className="login-demo-title">Demo accounts</span>
-          <div className="login-demo-grid">
-            {DEMO.map((account) => (
-              <button key={account.email} type="button" className="demo-chip"
-                onClick={() => setForm({ email: account.email, password: account.password })}>
-                {account.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

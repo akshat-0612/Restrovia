@@ -218,11 +218,21 @@ const publicMenu = (await call('/public/menu?restaurant=delight-food')).json;
 const shown = publicMenu.categories.flatMap((c) => c.items).find((i) => i.name === 'Test Photo Dish');
 ok(/\/api\/public\/images\//.test(shown?.imageUrl || ''), 'and the customer menu serves it');
 
+// Noted first: this suite runs against a database someone may be using, and the
+// logo is theirs. Resetting it to null afterwards — which is what this used to
+// do — silently un-set a logo an owner had chosen.
+const logoBefore = (await call('/admin/settings', { token: owner })).json.restaurant.logoImage?.id ?? null;
+
 const logo = await call('/admin/settings', { token: owner, method: 'PATCH', body: { logoImageId: imageId } });
 ok(logo.json.restaurant?.logoImage?.url, 'a restaurant logo can be an upload');
+// The portal's own chrome reads the logo from /auth/me. It used to be sent only
+// the emoji, so an uploaded logo showed on the storefront and nowhere in the
+// admin — which reads as the upload having failed.
+ok(/\/api\/public\/images\//.test((await call('/auth/me', { token: owner })).json.user?.restaurant?.logoUrl || ''),
+  'and the admin portal is told about it, for its sidebar and printed tents');
 ok((await call('/admin/settings', { token: owner, method: 'PATCH',
   body: { logoImageId: 'not-a-real-image' } })).status === 400, 'an unknown logo image is rejected');
-await call('/admin/settings', { token: owner, method: 'PATCH', body: { logoImageId: null } });
+await call('/admin/settings', { token: owner, method: 'PATCH', body: { logoImageId: logoBefore } });
 await call(`/admin/menu/items/${withImage.json.item.id}`, { token: owner, method: 'DELETE' });
 ok((await call(`/admin/images/${imageId}`, { token: owner, method: 'DELETE' })).status === 200, 'the owner can delete it');
 
@@ -234,6 +244,96 @@ ok((await call('/admin/settings', { token: owner, method: 'PATCH',
 ok((await call('/admin/settings', { token: rival })).json.restaurant.qrTheme === 'classic',
   "one restaurant's design does not change another's");
 await call('/admin/settings', { token: owner, method: 'PATCH', body: { qrTheme: 'classic' } });
+
+console.log('\n── STOREFRONT THEME & PHOTOS ──');
+// Noted so the run can hand the storefront back looking how it found it, rather
+// than resetting to a default the owner may never have chosen.
+const lookBefore = (await call('/admin/settings', { token: owner })).json.restaurant;
+
+const looked = await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { menuTheme: 'noir', heroStyle: 'backdrop' } });
+ok(looked.json.restaurant.menuTheme === 'noir' && looked.json.restaurant.heroStyle === 'backdrop',
+  'the owner can choose a storefront theme and how photos are used');
+ok((await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { menuTheme: 'vaporwave' } })).status === 400, 'an unknown theme is rejected');
+ok((await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { heroStyle: 'parallax' } })).status === 400, 'an unknown photo style is rejected');
+ok((await call('/admin/settings', { token: rival })).json.restaurant.menuTheme === 'midnight',
+  "one restaurant's theme does not change another's");
+
+// The customer app cannot render a theme it is not told about.
+const storefront = (await call('/public/restaurant?restaurant=delight-food')).json;
+ok(storefront.menuTheme === 'noir' && storefront.heroStyle === 'backdrop',
+  'the public storefront config carries the theme');
+ok(Array.isArray(storefront.photos), 'and a photos array, even when empty');
+
+/**
+ * This suite runs against a shared development database that a person may be
+ * using at the same time, so the gallery is not assumed to start empty — every
+ * assertion below is relative to whatever was already there. An earlier version
+ * assumed zero and failed the moment someone uploaded a photo of their own.
+ */
+const photosBefore = (await call('/admin/settings', { token: owner })).json.restaurant.photos ?? [];
+const beforeIds = photosBefore.map((p) => p.id);
+
+const heroUp = await call('/admin/images', { token: owner, method: 'POST',
+  body: { dataUrl: tinyPng, width: 1600, height: 900 } });
+const heroImageId = heroUp.json.image.id;
+
+const added = await call('/admin/settings/photos', { token: owner, method: 'POST',
+  body: { imageId: heroImageId, caption: 'Our terrace' } });
+ok(added.status === 201 && added.json.photo?.image?.url, 'a storefront photo can be added');
+ok(added.json.photo.caption === 'Our terrace', 'with a caption');
+const photoId = added.json.photo.id;
+
+ok((await call('/admin/settings/photos', { token: owner, method: 'POST',
+  body: { imageId: heroImageId } })).status === 400, 'the same photo cannot be added twice');
+ok((await call('/admin/settings/photos', { token: owner, method: 'POST',
+  body: { imageId: 'no-such-image' } })).status === 400, 'an unknown image is rejected');
+ok((await call('/admin/settings/photos', { token: rival, method: 'POST',
+  body: { imageId: heroImageId } })).status === 400,
+  "another tenant cannot put this restaurant's image on their storefront");
+ok((await call(`/admin/settings/photos/${photoId}`, { token: rival, method: 'DELETE' })).status === 404,
+  'nor remove it from this one');
+
+const second = await call('/admin/images', { token: owner, method: 'POST',
+  body: { dataUrl: tinyPng, width: 1600, height: 900 } });
+const secondPhoto = (await call('/admin/settings/photos', { token: owner, method: 'POST',
+  body: { imageId: second.json.image.id } })).json.photo;
+
+// The first photo is the hero, so the order is the feature, not a detail. The
+// whole gallery goes up, this run's two in front of whatever was already there.
+const reordered = await call('/admin/settings/photos/order', { token: owner, method: 'POST',
+  body: { ids: [secondPhoto.id, photoId, ...beforeIds] } });
+ok(reordered.json.photos?.[0]?.id === secondPhoto.id
+   && reordered.json.photos?.[1]?.id === photoId, 'photos can be reordered to change the hero');
+ok((await call('/admin/settings/photos/order', { token: owner, method: 'POST',
+  body: { ids: [photoId] } })).status === 400, 'a partial order is rejected');
+
+const withPhotos = (await call('/public/restaurant?restaurant=delight-food')).json;
+const servedIds = withPhotos.photos.map((p) => p.id);
+ok(servedIds[0] === secondPhoto.id && servedIds[1] === photoId,
+  'the customer app receives them in the owner\'s order');
+ok(withPhotos.photos.length === beforeIds.length + 2, 'alongside any it already had');
+ok(/\/api\/public\/images\//.test(withPhotos.photos[0].url), 'each with a servable URL');
+
+// Photos are the reason those bytes exist, so removing one should not leave them behind.
+ok((await call(`/admin/settings/photos/${photoId}`, { token: owner, method: 'DELETE' })).status === 200,
+  'a photo can be removed');
+ok((await call(`/admin/images/${heroImageId}`, { token: owner, method: 'DELETE' })).status === 404,
+  'and its bytes go with it');
+await call(`/admin/settings/photos/${secondPhoto.id}`, { token: owner, method: 'DELETE' });
+// Put the pre-existing gallery back in the order its owner had it in.
+if (beforeIds.length > 1) {
+  await call('/admin/settings/photos/order', { token: owner, method: 'POST', body: { ids: beforeIds } });
+}
+
+// Turning photos off should stop the storefront reporting them at all.
+await call('/admin/settings', { token: owner, method: 'PATCH', body: { heroStyle: 'off' } });
+ok((await call('/public/restaurant?restaurant=delight-food')).json.photos.length === 0,
+  'with photos off the storefront reports none');
+await call('/admin/settings', { token: owner, method: 'PATCH',
+  body: { menuTheme: lookBefore.menuTheme, heroStyle: lookBefore.heroStyle } });
 
 console.log('\n── ACCEPTING-ORDERS SWITCH ──');
 // Also establishes the precondition the lifecycle tests below depend on, rather

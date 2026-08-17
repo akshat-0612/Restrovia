@@ -139,6 +139,13 @@ export const api = {
   updateSettings: (body) => request('/admin/settings', { method: 'PATCH', body }),
   toggleOrders:   () => request('/admin/settings/toggle-orders', { method: 'POST' }),
 
+  // Storefront photos — the restaurant's own room, shown on the customer app
+  addStorefrontPhoto:    (body) => request('/admin/settings/photos', { method: 'POST', body }),
+  updateStorefrontPhoto: (id, body) => request(`/admin/settings/photos/${id}`, { method: 'PATCH', body }),
+  deleteStorefrontPhoto: (id) => request(`/admin/settings/photos/${id}`, { method: 'DELETE' }),
+  reorderStorefrontPhotos: (ids) =>
+    request('/admin/settings/photos/order', { method: 'POST', body: { ids } }),
+
   // Platform (vendor tier)
   platformStats:       (signal) => request('/platform/stats', { signal }),
   platformRestaurants: (signal) => request('/platform/restaurants', { signal }),

@@ -76,6 +76,30 @@ export function useDebounced(value, delay = 350) {
 }
 
 /** Fires a short beep for newly arrived orders, via WebAudio so no asset is needed. */
+/**
+ * Tracks a media query, so a component can lay itself out differently on a
+ * phone rather than only restyling itself.
+ *
+ * Some layout differences cannot be expressed in CSS: the kitchen board shows
+ * one status column at a time on a phone, and which one is React state. Hiding
+ * the other columns with CSS would leave them mounted and their orders still in
+ * the scroll height, which is the problem being solved.
+ */
+export function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (event) => setMatches(event.matches);
+    setMatches(mql.matches);            // the query may have changed with `query`
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
+}
+
 export function useOrderChime() {
   const contextRef = useRef(null);
 
