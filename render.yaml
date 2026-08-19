@@ -5,6 +5,8 @@
 # node_modules to the root, and the frontends resolve @shared through a relative
 # path, so a build that only sees server/ has no dependencies to build with.
 services:
+  # NOTE: this name decides the onrender.com hostname, and must match the service
+  # you actually run for any `fromService` reference above to resolve.
   - type: web
     name: restrovia-api
     runtime: node
@@ -25,4 +27,40 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
+        sync: false
+
+      # This API's own public address, e.g. https://restrovia.onrender.com
+      #
+      # Set by hand, because it only fills itself in when the running service was
+      # actually created from this blueprint AND carries the `name` below. A
+      # deployment made through the dashboard, or renamed since, ignores this file
+      # entirely — and a `fromService` reference that silently never resolves is
+      # worse than a field you typed once. If yours is blueprint-managed and the
+      # name matches, you can replace this with:
+      #
+      #   fromService: { type: web, name: <this service's name>, property: host }
+      #
+      # The server accepts a bare hostname and adds the scheme either way.
+      #
+      # It matters because image URLs are normally built from the incoming
+      # request, and a push notification is sent long after any request — without
+      # this its icon is simply omitted.
+      - key: PUBLIC_API_URL
+        sync: false
+
+      # Web Push. Generate the pair once with `npm run push:keys -w server` and
+      # paste them into the Render dashboard. They belong ONLY here: the private
+      # key signs every notification, and the frontends fetch the public one from
+      # /api/public/push/key at runtime rather than being built with it.
+      #
+      # Leave them unset and the apps still work — they just never offer
+      # notifications. Changing the pair later invalidates every subscription,
+      # so everyone has to opt in again.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      # A mailto: or https: address you own, required by the VAPID spec so a push
+      # service operator can reach you.
+      - key: VAPID_SUBJECT
         sync: false

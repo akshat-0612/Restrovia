@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { sendToAll, pushEnabled } from '../lib/push.js';
 import { formatCurrency } from '@restrovia/shared';
+import { publicApiBase } from '../lib/images.js';
 
 /**
  * The notification's picture: the restaurant's logo, absolute because a service
@@ -11,7 +12,7 @@ import { formatCurrency } from '@restrovia/shared';
  */
 function logoFor(restaurant) {
   if (!restaurant) return undefined;
-  const base = process.env.PUBLIC_API_URL?.replace(/\/+$/, '');
+  const base = publicApiBase();
   if (restaurant.logoImageId && base) return `${base}/api/public/images/${restaurant.logoImageId}`;
   return restaurant.logoUrl || undefined;
 }

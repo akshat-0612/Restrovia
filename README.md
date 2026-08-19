@@ -120,6 +120,16 @@ Leave them unset and everything still works; the apps simply never offer
 notifications. Both apps already poll, so push only ever adds the ability to look
 away from the screen — it is never what makes an order appear.
 
+**In production these go on the API host only — Render, not Cloudflare.** The
+private key signs every notification and must never reach a browser; the public
+key is served to browsers at runtime from `/api/public/push/key`, so the frontends
+are not built with it and need no push configuration at all. Cloudflare Pages only
+ever needs `VITE_API_URL` (and `VITE_RESTAURANT_SLUG` for a pinned storefront).
+
+> Never give a key a `VITE_` prefix. Vite inlines every `VITE_*` variable into the
+> JavaScript it ships, so `VITE_VAPID_PRIVATE_KEY` would publish your private key
+> to every visitor.
+
 | Who | Turns it on | Gets told |
 |---|---|---|
 | Kitchen / owner | **Notifications** button on Live orders, per device | A new order was placed |
