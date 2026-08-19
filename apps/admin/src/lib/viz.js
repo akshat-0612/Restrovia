@@ -25,6 +25,14 @@ export const STATUS = {
   critical: '#d03b3b',
 };
 
+/**
+ * Chart chrome — the surface, gridlines and axis ink the series sit on.
+ *
+ * Two sets, because the portal has two themes. The SERIES palette above is not
+ * duplicated: those hues were validated for colour-vision separation against the
+ * dark surface, and they carry on white as well, so re-picking them would risk a
+ * property that has already been checked.
+ */
 export const CHART_INK = {
   surface:  '#18181b',
   grid:     '#2c2c2a',
@@ -33,6 +41,20 @@ export const CHART_INK = {
   secondary:'#c3c2b7',
   primary:  '#ffffff',
 };
+
+export const CHART_INK_LIGHT = {
+  surface:  '#ffffff',
+  grid:     '#e2e5ea',
+  axis:     '#c8ced8',
+  muted:    '#697180',
+  secondary:'#3d4653',
+  primary:  '#12161c',
+};
+
+/** The chrome for whichever theme the portal is in. */
+export function chartInk(theme) {
+  return theme === 'light' ? CHART_INK_LIGHT : CHART_INK;
+}
 
 /** Order-pipeline colours: ordinal progression, with cancelled on the status red. */
 export const STATUS_COLORS = {

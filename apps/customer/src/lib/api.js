@@ -62,6 +62,10 @@ export const api = {
   placeOrder: (payload)          => request('/orders', { method: 'POST', body: payload }),
   trackOrder: (orderNumber, token) =>
     request(`/orders/${orderNumber}?token=${encodeURIComponent(token)}`),
+  /** Browser push, so a diner can wander off and still be told food is ready. */
+  pushKey:       (signal) => request('/push/key', { signal }),
+  pushSubscribe: (body) => request('/push/subscribe', { method: 'POST', body }),
+
   /** Batch tracking: one request no matter how many orders the device holds. */
   lookupOrders: (refs, signal) => request('/orders/lookup', { method: 'POST', body: { refs }, signal }),
 };

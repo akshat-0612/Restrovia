@@ -1,4 +1,5 @@
 import { CUSTOMER_JOURNEY, ORDER_STATUS, formatCurrency, formatTime, minutesSince } from '@shared';
+import NotifyMe from './NotifyMe';
 
 /**
  * Confirmation and live tracking in one screen. Purely presentational — the
@@ -42,6 +43,9 @@ export default function OrderTracker({ order, restaurant, onDone, onBack }) {
             </p>
           )}
         </div>
+
+        {/* Only while there is still something to wait for. */}
+        {isActive && order.status !== 'READY' && <NotifyMe order={order} />}
 
         {!cancelled && (
           <ol className="tracker-steps">

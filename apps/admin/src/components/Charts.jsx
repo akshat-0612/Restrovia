@@ -3,21 +3,32 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { formatCurrency, formatNumber } from '@shared';
-import { CHART_INK, SERIES, niceTicks } from '../lib/viz';
+import { chartInk, SERIES, niceTicks } from '../lib/viz';
+import { useTheme } from '../context/theme-context';
 
-/* Shared axis chrome: hairline, solid, recessive — the data is the loud part. */
-const AXIS = {
-  stroke: CHART_INK.axis,
-  tick: { fill: CHART_INK.muted, fontSize: 11 },
-  tickLine: false,
-  axisLine: { stroke: CHART_INK.axis },
-};
-
-const GRID = {
-  stroke: CHART_INK.grid,
-  strokeDasharray: '0',   // never dashed
-  vertical: false,
-};
+/**
+ * Shared axis chrome: hairline, solid, recessive — the data is the loud part.
+ *
+ * Built per render rather than at module load, because the portal's theme can
+ * change while a chart is on screen and recharts takes these as plain props.
+ */
+function chromeFor(theme) {
+  const ink = chartInk(theme);
+  return {
+    AXIS: {
+      stroke: ink.axis,
+      tick: { fill: ink.muted, fontSize: 11 },
+      tickLine: false,
+      axisLine: { stroke: ink.axis },
+    },
+    GRID: {
+      stroke: ink.grid,
+      strokeDasharray: '0',   // never dashed
+      vertical: false,
+    },
+    ink,
+  };
+}
 
 function Tip({ active, payload, label, formatter }) {
   if (!active || !payload?.length) return null;
@@ -40,6 +51,8 @@ function Tip({ active, payload, label, formatter }) {
  * the card title already names what is plotted.
  */
 export function TrendChart({ data, xKey, yKey, name, symbol, height = 240, asCurrency = true }) {
+  const { theme } = useTheme();
+  const { AXIS, GRID, ink } = chromeFor(theme);
   const format = (v) => (asCurrency ? formatCurrency(v, symbol) : formatNumber(v));
   const max = Math.max(0, ...data.map((d) => d[yKey]));
 
@@ -63,13 +76,13 @@ export function TrendChart({ data, xKey, yKey, name, symbol, height = 240, asCur
         />
         <Tooltip
           content={<Tip formatter={format} />}
-          cursor={{ stroke: CHART_INK.muted, strokeWidth: 1 }}
+          cursor={{ stroke: ink.muted, strokeWidth: 1 }}
         />
         <Area
           type="monotone" dataKey={yKey} name={name}
           stroke={SERIES[0]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
           fill={`url(#fill-${yKey})`}
-          activeDot={{ r: 4, fill: SERIES[0], stroke: CHART_INK.surface, strokeWidth: 2 }}
+          activeDot={{ r: 4, fill: SERIES[0], stroke: ink.surface, strokeWidth: 2 }}
           dot={false}
         />
       </AreaChart>
@@ -85,6 +98,8 @@ export function TrendChart({ data, xKey, yKey, name, symbol, height = 240, asCur
 export function ColumnChart({
   data, xKey, yKey, name, symbol, height = 220, asCurrency = false, highlightPeak = true,
 }) {
+  const { theme } = useTheme();
+  const { AXIS, GRID } = chromeFor(theme);
   const format = (v) => (asCurrency ? formatCurrency(v, symbol) : formatNumber(v));
   const max = Math.max(0, ...data.map((d) => d[yKey]));
   const peak = data.reduce((best, d) => (d[yKey] > (best?.[yKey] ?? -1) ? d : best), null);
@@ -153,6 +168,8 @@ export function RankedBars({ rows, labelKey, valueKey, symbol, asCurrency = true
  * named in the legend so identity is never colour-alone.
  */
 export function ShareBar({ rows, labelKey, valueKey, symbol }) {
+  const { theme } = useTheme();
+  const { ink } = chromeFor(theme);
   const total = rows.reduce((s, r) => s + r[valueKey], 0) || 1;
   const shown = rows.slice(0, 6);
   const rest = rows.slice(6);
@@ -169,7 +186,7 @@ export function ShareBar({ rows, labelKey, valueKey, symbol }) {
             className="share-segment"
             style={{
               width: `${(seg[valueKey] / total) * 100}%`,
-              background: i < SERIES.length ? SERIES[i] : CHART_INK.muted,
+              background: i < SERIES.length ? SERIES[i] : ink.muted,
             }}
             title={`${seg[labelKey]} — ${formatCurrency(seg[valueKey], symbol)}`}
           />
@@ -178,7 +195,7 @@ export function ShareBar({ rows, labelKey, valueKey, symbol }) {
       <ul className="share-legend">
         {segments.map((seg, i) => (
           <li key={seg[labelKey]}>
-            <span className="share-swatch" style={{ background: i < SERIES.length ? SERIES[i] : CHART_INK.muted }} />
+            <span className="share-swatch" style={{ background: i < SERIES.length ? SERIES[i] : ink.muted }} />
             <span className="share-name">{seg[labelKey]}</span>
             <span className="share-pct">{Math.round((seg[valueKey] / total) * 100)}%</span>
           </li>

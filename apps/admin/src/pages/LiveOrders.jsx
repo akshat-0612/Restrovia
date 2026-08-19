@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatCurrency, formatTime, minutesSince, ORDER_STATUS } from '@shared';
+import { formatCurrency, formatElapsed, formatTime, minutesSince, ORDER_STATUS } from '@shared';
 import { api } from '../lib/api';
 import { usePolling, useOrderChime, useMediaQuery } from '../lib/hooks';
 import { useAuth } from '../context/auth-context';
 import { useToast } from '../components/toast-context';
 import { EmptyState, ErrorState, Spinner } from '../components/States';
 import Modal from '../components/Modal';
+import PushToggle from '../components/PushToggle';
 
 /** The board's columns, in kitchen order. Each names the action that advances it. */
 const COLUMNS = [
@@ -20,8 +21,12 @@ const LATE_AFTER_MINS = 25;
 
 /**
  * Below this the board is one column wide, so all four stages stack and a busy
- * "New" queue buries everything under it. At that width the board shows one
- * stage at a time instead, chosen from the switcher.
+ * "New" queue buries everything under it.
+ *
+ * The stage switcher is offered at every width — it is just as useful for
+ * concentrating on one queue during a rush on a large screen — but it is what a
+ * phone *opens* on, because there the alternative is scrolling past every new
+ * order to reach the ready ones.
  *
  * Must stay in step with the `.kanban` single-column rule in index.css.
  */
@@ -37,9 +42,12 @@ export default function LiveOrders() {
   const [soundOn, setSoundOn] = useState(() => localStorage.getItem('restrovia:sound') !== 'off');
   const [busyId, setBusyId] = useState(null);
   const narrow = useMediaQuery(NARROW);
-  // Which stage the switcher is on. "New" is where the kitchen's attention is
-  // owed, so it is where a phone opens. Ignored entirely on a wide screen.
-  const [stage, setStage] = useState('PLACED');
+  // Read once, at mount: a phone opens on the queue that needs attention, a wide
+  // screen on the whole board. After that it is whatever the user last chose,
+  // which must survive a resize rather than being reset by one.
+  const [stage, setStage] = useState(
+    () => (typeof window !== 'undefined' && window.matchMedia(NARROW).matches ? 'PLACED' : 'ALL')
+  );
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   // Ticks once a minute so the "x min ago" labels stay honest between polls.
@@ -105,12 +113,7 @@ export default function LiveOrders() {
     orders: orders.filter((o) => o.status === col.status),
   }));
 
-  // On a wide screen every stage is on the board at once, so the switcher's
-  // selection is deliberately not applied — rotating a tablet back to landscape
-  // must not leave three quarters of the kitchen hidden.
-  const visible = narrow && stage !== 'ALL'
-    ? grouped.filter((col) => col.status === stage)
-    : grouped;
+  const visible = stage === 'ALL' ? grouped : grouped.filter((col) => col.status === stage);
 
   return (
     <>
@@ -123,6 +126,7 @@ export default function LiveOrders() {
           </p>
         </div>
         <div className="page-actions">
+          <PushToggle />
           <button className={`btn btn-ghost ${soundOn ? '' : 'muted'}`} onClick={toggleSound}>
             {soundOn ? '🔔 Sound on' : '🔕 Sound off'}
           </button>
@@ -135,32 +139,30 @@ export default function LiveOrders() {
           message="New orders will appear here the moment a customer places one." />
       ) : (
         <>
-        {narrow && (
-          <div className="board-filter" aria-label="Show one stage">
+        <div className="board-filter" aria-label="Show one stage">
+          <button
+            type="button"
+            className={`board-filter-btn ${stage === 'ALL' ? 'active' : ''}`}
+            aria-pressed={stage === 'ALL'}
+            onClick={() => setStage('ALL')}
+          >
+            All <span className="board-filter-count">{orders.length}</span>
+          </button>
+          {grouped.map((column) => (
             <button
+              key={column.status}
               type="button"
-              className={`board-filter-btn ${stage === 'ALL' ? 'active' : ''}`}
-              aria-pressed={stage === 'ALL'}
-              onClick={() => setStage('ALL')}
+              className={`board-filter-btn ${stage === column.status ? 'active' : ''}`}
+              aria-pressed={stage === column.status}
+              onClick={() => setStage(column.status)}
             >
-              All <span className="board-filter-count">{orders.length}</span>
+              <span className={`kanban-dot status-${column.status.toLowerCase()}`} />
+              {column.title} <span className="board-filter-count">{column.orders.length}</span>
             </button>
-            {grouped.map((column) => (
-              <button
-                key={column.status}
-                type="button"
-                className={`board-filter-btn ${stage === column.status ? 'active' : ''}`}
-                aria-pressed={stage === column.status}
-                onClick={() => setStage(column.status)}
-              >
-                <span className={`kanban-dot status-${column.status.toLowerCase()}`} />
-                {column.title} <span className="board-filter-count">{column.orders.length}</span>
-              </button>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
 
-        <div className="kanban">
+        <div className={`kanban ${stage === 'ALL' ? '' : 'focused'}`}>
           {visible.map((column) => (
             <section key={column.status} className="kanban-col">
               <header className="kanban-col-head">
@@ -182,7 +184,7 @@ export default function LiveOrders() {
                       <div className="order-card-head">
                         <span className="order-num">#{order.orderNumber}</span>
                         <span className="order-table">Table {order.tableLabel}</span>
-                        <span className={`order-age ${late ? 'late' : ''}`}>{elapsed}m</span>
+                        <span className={`order-age ${late ? 'late' : ''}`}>{formatElapsed(elapsed)}</span>
                       </div>
 
                       <div className="order-customer">

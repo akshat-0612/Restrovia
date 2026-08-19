@@ -28,7 +28,19 @@
 /* ───────────────────── Full-page photo backdrop ─────────────────────
    Fixed, so the room stays put while the menu scrolls over it. Tinted hard by
    the theme: this is wallpaper behind a menu, and the menu has to win. */
-.app-backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+/**
+ * Behind everything, via a negative z-index rather than by lifting every sibling
+ * above it.
+ *
+ * Lifting the siblings is what this used to do — `position: relative` on each
+ * child of .app — and it silently overrode `position: fixed` on the cart, both
+ * sheets, the floating bar and the toast, which then rendered in the flow at the
+ * foot of the page. The backdrop is wallpaper; it should sink, not push.
+ *
+ * .app creates no stacking context, so -1 puts this behind the page's content
+ * while staying above the canvas background painted from body.
+ */
+.app-backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
 .app-backdrop img { width: 100%; height: 100%; object-fit: cover; }
 /* Blurred hard as well as tinted. Out of focus is what turns a photograph into
    a texture, and it is what lets the tint be light enough to see through. */
@@ -36,7 +48,6 @@
   content: ''; position: absolute; inset: 0;
   background: var(--photo-tint); backdrop-filter: blur(14px);
 }
-.app.has-backdrop > *:not(.app-backdrop) { position: relative; z-index: 1; }
 /* Surfaces let a little of the room through, or the backdrop is only ever a margin. */
 .app.has-backdrop .menu-card,
 .app.has-backdrop .rail-card-img {
@@ -984,3 +995,26 @@
 @media (max-width: 400px) {
   .table-chip { display: none; }
 }
+
+/* ─────────────────── "Notify me when it's ready" ─────────────────── */
+.notify-row {
+  background: var(--surface); border: 1px solid var(--border); border-top: none;
+  padding: 0.9rem 1.25rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.btn-notify {
+  width: 100%; padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent);
+  color: var(--brand-ink); font-size: 0.88rem; font-weight: 600;
+  transition: background-color 0.15s;
+}
+.btn-notify:hover { background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.btn-notify:disabled { opacity: 0.6; }
+.notify-error { font-size: 0.75rem; color: color-mix(in srgb, var(--red) 82%, var(--text)); }
+.notify-note {
+  background: var(--surface); border: 1px solid var(--border); border-top: none;
+  padding: 0.8rem 1.25rem; font-size: 0.8rem; color: var(--text-muted); text-align: center;
+}
+.notify-note.on { color: color-mix(in srgb, var(--green) 82%, var(--text)); }

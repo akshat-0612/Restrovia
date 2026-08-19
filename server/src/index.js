@@ -16,6 +16,7 @@ import couponsRoutes from './routes/admin/coupons.js';
 import analyticsRoutes from './routes/admin/analytics.js';
 import exportsRoutes from './routes/admin/exports.js';
 import imagesRoutes from './routes/admin/images.js';
+import pushRoutes from './routes/admin/push.js';
 
 import { requireAuth } from './middleware/auth.js';
 import { resolveTenant } from './middleware/tenant.js';
@@ -152,6 +153,7 @@ admin.use('/coupons', couponsRoutes);
 admin.use('/analytics', analyticsRoutes);
 admin.use('/export', exportsRoutes);
 admin.use('/images', imagesRoutes);
+admin.use('/push', pushRoutes);
 app.use('/api/admin', admin);
 
 app.use(notFoundHandler);

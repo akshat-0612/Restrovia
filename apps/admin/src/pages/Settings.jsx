@@ -7,11 +7,13 @@ import ImagePicker from '../components/ImagePicker';
 import StorefrontPreview from '../components/StorefrontPreview';
 import StorefrontPhotos from '../components/StorefrontPhotos';
 import { STOREFRONT_THEMES, HERO_STYLES } from '@shared';
+import { useTheme, THEME_CHOICES } from '../context/theme-context';
 
 const TIMEZONES = ['Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London', 'America/New_York'];
 
 export default function Settings() {
   const toast = useToast();
+  const { preference, setPreference } = useTheme();
   const { data, loading, error, reload } = useApi((signal) => api.settings(signal), []);
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -327,6 +329,30 @@ export default function Settings() {
             <input type="checkbox" checked={form.isAcceptingOrders} onChange={set('isAcceptingOrders')} />
             Currently accepting orders
           </label>
+        </div>
+      </Card>
+
+      <Card title="Appearance" subtitle="How this portal looks on this device">
+        <div className="form">
+          <div className="hero-style-row">
+            {THEME_CHOICES.map((choice) => (
+              <label key={choice.id} className={`hero-style ${preference === choice.id ? 'chosen' : ''}`}>
+                <input
+                  type="radio"
+                  name="portalTheme"
+                  value={choice.id}
+                  checked={preference === choice.id}
+                  onChange={() => setPreference(choice.id)}
+                />
+                <strong>{choice.label}</strong>
+                <span>{choice.note}</span>
+              </label>
+            ))}
+          </div>
+          <span className="field-hint">
+            Saved on this device and applied straight away — there is nothing to save.
+            Your staff each choose their own, and it does not affect what customers see.
+          </span>
         </div>
       </Card>
 

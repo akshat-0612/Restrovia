@@ -39,6 +39,40 @@
   text-rendering: optimizeLegibility;
 }
 
+/**
+ * Light palette.
+ *
+ * The provider always writes an explicit data-theme, resolving "match my device"
+ * in JS — so there is exactly one block per theme here and no third copy of
+ * these values inside a prefers-color-scheme query.
+ *
+ * The brand and status colours are darkened rather than reused: the dark set was
+ * picked to carry against #18181b and several of them (the yellow especially)
+ * fall below readable contrast on white.
+ */
+:root[data-theme="light"] {
+  --plane:      #f5f6f8;
+  --surface:    #ffffff;
+  --surface-2:  #f1f3f6;
+  --surface-3:  #e6e9ee;
+  --border:     #e2e5ea;
+  --border-2:   #c8ced8;
+
+  --text:       #12161c;
+  --text-2:     #3d4653;
+  --muted:      #697180;
+
+  --brand:      #1f6fd0;
+  --brand-dim:  #17559f;
+
+  --good:       #0a7a2f;
+  --warning:    #96650a;
+  --serious:    #b4552a;
+  --critical:   #c02626;
+
+  --shadow:     0 16px 40px rgba(17, 24, 39, 0.13);
+}
+
 body { min-height: 100vh; background: var(--plane); }
 #root { min-height: 100vh; }
 
@@ -226,6 +260,8 @@ textarea { resize: vertical; }
   font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem;
   display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
 }
+.push-note { max-width: 240px; text-align: right; line-height: 1.35; }
+
 .page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .poll-hint { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; }
 .live-dot {
@@ -416,16 +452,27 @@ textarea { resize: vertical; }
 .pill-alert { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning); }
 .pill-muted { background: var(--surface-3); color: var(--muted); }
 
-.status-placed    { background: color-mix(in srgb, #3987e5 20%, transparent); color: #79b0f0; }
-.status-accepted  { background: color-mix(in srgb, #5598e7 20%, transparent); color: #8fbcf1; }
-.status-preparing { background: color-mix(in srgb, #c98500 22%, transparent); color: #e3a52e; }
-.status-ready     { background: color-mix(in srgb, #199e70 22%, transparent); color: #35c692; }
+/**
+ * Status pills derive both tint and ink from one hue, rather than naming a pale
+ * ink that only works on a dark card. Mixing the label toward --text keeps it
+ * readable whichever theme the portal is in.
+ *
+ * The solid .kanban-dot rules are more specific and still win for the dots.
+ */
+.status-placed, .status-accepted, .status-preparing, .status-ready, .status-cancelled {
+  background: color-mix(in srgb, var(--hue) 20%, transparent);
+  color: color-mix(in srgb, var(--hue) 68%, var(--text));
+}
+.status-placed    { --hue: #3987e5; }
+.status-accepted  { --hue: #5598e7; }
+.status-preparing { --hue: #c98500; }
+.status-ready     { --hue: #199e70; }
+.status-cancelled { --hue: var(--critical); }
 .status-completed { background: var(--surface-3); color: var(--muted); }
-.status-cancelled { background: color-mix(in srgb, var(--critical) 20%, transparent); color: #e8706f; }
 
 .plan-starter { background: var(--surface-3); color: var(--text-2); }
-.plan-growth  { background: color-mix(in srgb, var(--brand) 20%, transparent); color: #79b0f0; }
-.plan-pro     { background: color-mix(in srgb, #9085e9 22%, transparent); color: #b0a8f0; }
+.plan-growth  { background: color-mix(in srgb, var(--brand) 20%, transparent); color: color-mix(in srgb, var(--brand) 70%, var(--text)); }
+.plan-pro     { background: color-mix(in srgb, #7c6ee0 22%, transparent); color: color-mix(in srgb, #7c6ee0 68%, var(--text)); }
 
 /* ═══════════════════════ Live board ═══════════════════════ */
 .kanban {
@@ -463,7 +510,7 @@ textarea { resize: vertical; }
 .board-filter {
   display: flex; gap: 0.4rem;
   overflow-x: auto; scrollbar-width: none;
-  position: sticky; top: var(--topbar-h); z-index: 30;
+  position: sticky; top: 0; z-index: 30;
   margin: -0.35rem 0 0.85rem;
   padding: 0.6rem 0;
   background: var(--plane);
@@ -482,6 +529,10 @@ textarea { resize: vertical; }
 .board-filter-btn.active .kanban-dot { background: #fff; }
 .board-filter-count { font-size: 0.72rem; opacity: 0.7; }
 .board-filter-btn.active .board-filter-count { opacity: 0.85; }
+
+/* One stage on its own: a column of cards, not a quarter of a board stretched
+   across a desktop. The single-column mobile rule below still overrides this. */
+.kanban.focused { grid-template-columns: minmax(0, 460px); }
 
 .order-card {
   background: var(--surface-2); border: 1px solid var(--border-2);
@@ -826,7 +877,8 @@ textarea { resize: vertical; }
   .topbar { display: flex; }
   .content { padding: 1rem 1rem 3rem; }
   .grid-2 { grid-template-columns: 1fr; }
-  .kanban { grid-template-columns: 1fr; }
+  .kanban, .kanban.focused { grid-template-columns: 1fr; }
+  .board-filter { top: var(--topbar-h); }
   .outcome-row { grid-template-columns: 110px 1fr 44px; }
   .platform-page { padding: 1.25rem 1rem 3rem; }
 }
@@ -1104,7 +1156,7 @@ textarea { resize: vertical; }
 /* The crop window. Whatever fills this frame is what gets kept. */
 .crop-frame {
   position: relative; width: 100%; overflow: hidden;
-  background: var(--plane); border-radius: var(--radius-sm);
+  background: var(--surface-3); border-radius: var(--radius-sm);
   cursor: grab; touch-action: none; user-select: none;
 }
 .crop-frame:active { cursor: grabbing; }

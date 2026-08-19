@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { restaurantMeta } from './vite-restaurant-meta.js';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), restaurantMeta()],
   resolve: {
     alias: {
       '@shared': fileURLToPath(new URL('../../packages/shared/src', import.meta.url)),

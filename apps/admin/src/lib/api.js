@@ -139,6 +139,13 @@ export const api = {
   updateSettings: (body) => request('/admin/settings', { method: 'PATCH', body }),
   toggleOrders:   () => request('/admin/settings/toggle-orders', { method: 'POST' }),
 
+  // Browser push — the kitchen gets told about an order with the tab in the background
+  pushKey:         (signal) => request('/admin/push/key', { signal }),
+  pushStatus:      (endpoint, signal) =>
+    request(`/admin/push/status?endpoint=${encodeURIComponent(endpoint)}`, { signal }),
+  pushSubscribe:   (subscription) => request('/admin/push/subscribe', { method: 'POST', body: { subscription } }),
+  pushUnsubscribe: (endpoint) => request('/admin/push/unsubscribe', { method: 'POST', body: { endpoint } }),
+
   // Storefront photos — the restaurant's own room, shown on the customer app
   addStorefrontPhoto:    (body) => request('/admin/settings/photos', { method: 'POST', body }),
   updateStorefrontPhoto: (id, body) => request(`/admin/settings/photos/${id}`, { method: 'PATCH', body }),

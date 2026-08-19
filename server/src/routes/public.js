@@ -6,6 +6,8 @@ import { ApiError, asyncHandler } from '../lib/errors.js';
 import { resolvePublicTenant } from '../middleware/tenant.js';
 import { createOrder, quoteOrder, ORDER_INCLUDE } from '../services/orderService.js';
 import { publicImageUrl } from '../lib/images.js';
+import { vapidPublicKey, pushEnabled } from '../lib/push.js';
+import { notifyNewOrder } from '../services/pushService.js';
 
 const router = Router();
 
@@ -127,6 +129,55 @@ router.get('/menu', resolvePublicTenant, asyncHandler(async (req, res) => {
   }));
 }));
 
+/** The key a diner's browser needs before it can subscribe. */
+router.get('/push/key', (_req, res) => {
+  res.json({ publicKey: vapidPublicKey(), enabled: pushEnabled });
+});
+
+/**
+ * Registers a diner's browser to be told when one order is ready.
+ *
+ * Proof of the order is required for exactly the reason tracking requires it:
+ * without it anyone could subscribe to a stranger's order number and be told
+ * about someone else's table. The same name-or-phone check is used, so a
+ * subscription can only be created by whoever placed the order.
+ */
+router.post('/push/subscribe', trackingLimiter, resolvePublicTenant, asyncHandler(async (req, res) => {
+  const body = z.object({
+    subscription: z.object({
+      endpoint: z.string().url().max(2000),
+      keys: z.object({ p256dh: z.string().min(1).max(255), auth: z.string().min(1).max(255) }),
+    }),
+    orderNumber: z.number().int().positive(),
+    token: z.string().trim().min(1).max(60),
+  }).parse(req.body);
+
+  const order = await prisma.order.findUnique({
+    where: { restaurantId_orderNumber: { restaurantId: req.restaurantId, orderNumber: body.orderNumber } },
+    select: { id: true, customerName: true, customerPhone: true, status: true },
+  });
+  if (!order) throw ApiError.notFound('Order not found');
+
+  const proof = body.token.toLowerCase();
+  const matches = proof === (order.customerPhone || '').toLowerCase()
+    || proof === order.customerName.toLowerCase();
+  if (!matches) throw ApiError.forbidden('Confirm the name or phone number used to place this order');
+
+  const { endpoint, keys } = body.subscription;
+  // One row per browser per order, so re-asking never doubles the message.
+  await prisma.pushSubscription.deleteMany({ where: { endpoint, orderId: order.id } });
+  await prisma.pushSubscription.create({
+    data: {
+      restaurantId: req.restaurantId,
+      orderId: order.id,
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+    },
+  });
+  res.status(201).json({ ok: true });
+}));
+
 /** Active tables, so a customer can pick theirs from a dropdown. */
 router.get('/tables', resolvePublicTenant, asyncHandler(async (req, res) => {
   const tables = await prisma.restaurantTable.findMany({
@@ -172,6 +223,9 @@ router.post('/orders', orderLimiter, resolvePublicTenant, asyncHandler(async (re
   }
 
   const order = await createOrder(req.restaurant, body);
+  // Deliberately not awaited: the diner's confirmation must not wait on a push
+  // service, and a failure to notify is not a failure to order.
+  notifyNewOrder(order);
   res.status(201).json({ order: serialize(order) });
 }));
 

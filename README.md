@@ -52,6 +52,97 @@ two tenants share a database and see nothing of each other.
 
 ---
 
+## How a shared link looks
+
+When someone sends a storefront link on WhatsApp or iMessage, the preview shows
+the **restaurant's** name, tagline and photo — not "Restrovia".
+
+That preview is built by a crawler which fetches the HTML and never runs the
+JavaScript, so setting `document.title` after boot is invisible to it. The tags
+have to be in the file that is served. A Vite plugin
+(`apps/customer/vite-restaurant-meta.js`) writes them at build time:
+
+```bash
+VITE_RESTAURANT_SLUG=delight-food \
+VITE_API_URL=https://your-api-domain.com \
+npm run build:customer
+```
+
+It fetches the restaurant and fills in the title, description, Open Graph and
+Twitter tags, the favicon, the Apple touch icon and the browser theme colour.
+The preview image is the restaurant's first storefront photo, falling back to its
+logo.
+
+The title is the restaurant's own name and tagline — "Delight Food — Fresh, fast
+and full of flavour" — falling back to "Order from your table" only for a
+restaurant that has not written one. It comes from `storefrontTitle()` in
+`packages/shared`, which the running app uses for the browser tab too, so the
+preview card and the tab can never disagree.
+
+**`VITE_API_URL` must be the public API, not localhost** — a crawler on WhatsApp's
+servers has to be able to fetch the image URL it is given.
+
+If the API cannot be reached the build prints a warning and carries on with the
+platform's generic wording; it never fails the deploy. A build with no
+`VITE_RESTAURANT_SLUG` — the shared deployment that serves every restaurant from
+one set of files — cannot name any restaurant in its HTML, so its link previews
+stay generic. There the tab title and icon are still corrected once the app
+loads, and per-restaurant previews would need a Pages Function to rewrite the
+tags per hostname.
+
+## Notifications
+
+Browser push, both ways: the kitchen is told when an order is placed, and a diner
+is told when theirs is marked ready. Notifications arrive with the tab in the
+background or closed — a service worker receives them, not the page.
+
+**There is nothing to sign up for and nothing to pay.** This uses the Web Push
+standard directly, not Firebase. The server signs each message with a VAPID key
+pair it generates for itself, and delivers to whichever push service the visitor's
+browser nominates — Google's for Chrome, Mozilla's for Firefox, Apple's for
+Safari. Those services are run free by the browser makers as part of supporting
+the standard; there is no project to create, no SDK in either app, and no billing
+relationship with anyone.
+
+Generate a key pair once and put it in `server/.env`:
+
+```bash
+npm run push:keys -w server
+```
+
+```
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...     # secret — anyone holding it can notify your subscribers
+VAPID_SUBJECT=mailto:you@your-domain.com
+```
+
+Leave them unset and everything still works; the apps simply never offer
+notifications. Both apps already poll, so push only ever adds the ability to look
+away from the screen — it is never what makes an order appear.
+
+| Who | Turns it on | Gets told |
+|---|---|---|
+| Kitchen / owner | **Notifications** button on Live orders, per device | A new order was placed |
+| Diner | **Notify me when it's ready** on the order tracker | That order is ready |
+
+Changing the key pair later invalidates every existing subscription, so everyone
+has to opt in again.
+
+### What to know before relying on it
+
+- **HTTPS is required** in production. Service workers only run on a secure
+  origin (`localhost` is exempt, which is why it works in development).
+- **iPhones and iPads** only allow push once the site has been **added to the
+  Home Screen** — Apple's rule, not a bug. The customer app detects this and says
+  so rather than offering a button that cannot work. For a QR-code storefront
+  that most diners open in Safari and never install, expect push to reach only
+  some of them; the on-screen tracker remains the thing that always works.
+- **Permission is one-shot.** A diner who declines cannot be asked again from the
+  page; they have to change it in browser settings. This is why the ask happens
+  on the tracker, after ordering, rather than on arrival.
+- Subscriptions are dropped automatically when a push service reports the browser
+  gone, and when an order is served or cancelled.
+
 ## Selling to a new restaurant
 
 The whole point of the architecture: **one API, one database, one customer-app

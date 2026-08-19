@@ -10,6 +10,13 @@ module.exports = {
   ignorePatterns: ['dist', '.eslintrc.cjs'],
   parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
   settings: { react: { version: '18.2' } },
+  // Build tooling runs in Node, not the browser, so it gets Node's globals.
+  overrides: [
+    {
+      files: ['vite.config.js', 'vite-*.js'],
+      env: { node: true, browser: false },
+    },
+  ],
   plugins: ['react-refresh'],
   rules: {
     'react-refresh/only-export-components': [

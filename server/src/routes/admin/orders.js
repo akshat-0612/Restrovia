@@ -4,6 +4,7 @@ import { prisma, serialize } from '../../lib/prisma.js';
 import { ApiError, asyncHandler } from '../../lib/errors.js';
 import { requireRole } from '../../middleware/auth.js';
 import { transitionOrder, ORDER_INCLUDE, STATUS_FLOW } from '../../services/orderService.js';
+import { notifyOrderStatus, forgetOrderSubscriptions } from '../../services/pushService.js';
 import { resolveRange } from '../../lib/time.js';
 
 const router = Router();
@@ -111,6 +112,11 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   if (!order) throw ApiError.notFound('Order not found');
 
   const updated = await transitionOrder({ order, toStatus: status, user: req.user, note });
+  // Every step the diner asked to follow. Fire-and-forget, as above.
+  notifyOrderStatus(updated);
+  // A cancellation is not announced — the kitchen will be telling them in person
+  // — but its subscriptions have nothing left to carry.
+  if (status === 'CANCELLED') forgetOrderSubscriptions(updated.id);
   res.json({ order: serialize(updated) });
 }));
 

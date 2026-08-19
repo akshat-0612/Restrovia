@@ -62,6 +62,29 @@ export function timeAgo(date, now = Date.now()) {
 }
 
 /** Minutes elapsed since an order was placed — drives the "running late" highlight. */
+/**
+ * A waiting time, in the largest unit that still reads honestly.
+ *
+ * The kitchen board shows how long an order has been sitting, and raw minutes
+ * stop being readable long before they stop being counted — "2975m" is a number
+ * to decode, not a duration to feel. Anything under an hour stays in minutes,
+ * because that is the range the kitchen actually works in.
+ */
+export function formatElapsed(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  if (total < 60) return `${total}m`;
+
+  const hours = Math.floor(total / 60);
+  if (hours < 24) {
+    const rest = total % 60;
+    return rest ? `${hours}h ${rest}m` : `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return restHours ? `${days}d ${restHours}h` : `${days}d`;
+}
+
 export function minutesSince(date, now = Date.now()) {
   return Math.floor((now - new Date(date).getTime()) / 60000);
 }
@@ -83,6 +106,33 @@ export function formatHour(hour) {
   if (hour === 0) return '12 AM';
   if (hour === 12) return '12 PM';
   return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
+}
+
+/**
+ * How a storefront names itself — in the browser tab, and in the preview card
+ * when someone shares the link.
+ *
+ * The restaurant's own tagline is the subtitle when it has one: "Delight Food —
+ * Fresh, fast and full of flavour" says something about the place, where the
+ * platform's generic line said the same thing for every client. The fallback
+ * only applies to a restaurant that has not written a tagline yet.
+ *
+ * Lives here because two very different places need the identical string — the
+ * build-time meta tags and the runtime document.title — and a preview card that
+ * disagreed with the tab would be its own small bug.
+ */
+export function storefrontTitle(restaurant) {
+  const name = restaurant?.name?.trim() || 'Restrovia';
+  const tagline = restaurant?.tagline?.trim();
+  return tagline ? `${name} — ${tagline}` : `${name} — Order from your table`;
+}
+
+/** The supporting line under the title in a shared preview. */
+export function storefrontDescription(restaurant) {
+  const name = restaurant?.name?.trim();
+  return name
+    ? `Browse the menu at ${name} and order from your table.`
+    : 'Browse the menu and order from your table.';
 }
 
 /** Stable key for a cart line: the same item in two sizes is two lines. */

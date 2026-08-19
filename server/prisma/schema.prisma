@@ -95,6 +95,7 @@ model Restaurant {
   orders     Order[]
   coupons    Coupon[]
   domains    RestaurantDomain[]
+  pushSubs   PushSubscription[]
 
   @@index([isActive])
   @@map("restaurants")
@@ -146,6 +147,7 @@ model User {
 
   restaurant  Restaurant?  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orderEvents OrderEvent[]
+  pushSubs    PushSubscription[]
 
   /// Emails are unique per tenant, so the same person can hold accounts at two restaurants.
   @@unique([restaurantId, email])
@@ -299,6 +301,7 @@ model Order {
   table      RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
   items      OrderItem[]
   events     OrderEvent[]
+  pushSubs   PushSubscription[]
 
   @@unique([restaurantId, orderNumber])
   @@index([restaurantId, status])
@@ -450,4 +453,43 @@ model StorefrontPhoto {
 
   @@index([restaurantId, sortOrder])
   @@map("storefront_photos")
+}
+
+/// A browser that has agreed to receive push notifications.
+///
+/// This is the standard Web Push subscription a browser hands back: an endpoint
+/// at whichever push service that browser uses, plus the two keys its messages
+/// must be encrypted with. There is no vendor account behind it — the server
+/// signs each send with its own VAPID key pair, so no Firebase project, SDK or
+/// billing relationship is involved.
+///
+/// One row is one browser watching one thing:
+///   • staff  — `userId` set, told when an order is placed
+///   • diner  — `orderId` set, told when that order is ready
+///
+/// A diner with two orders in the kitchen therefore has two rows against the
+/// same endpoint, which is what lets both be announced. Rows are replaced rather
+/// than duplicated on re-subscribe, and deleted when the push service reports
+/// the endpoint gone.
+model PushSubscription {
+  id           String  @id @default(cuid())
+  restaurantId String
+  userId       String?
+  orderId      String?
+
+  /// The push service URL for this browser. Long — Chrome's run past 200 chars.
+  endpoint String @db.Text
+  /// The subscription's public key and auth secret, base64url as the browser gave them.
+  p256dh   String
+  auth     String
+
+  createdAt DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order      Order?     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, userId])
+  @@index([orderId])
+  @@map("push_subscriptions")
 }

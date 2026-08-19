@@ -335,6 +335,59 @@ ok((await call('/public/restaurant?restaurant=delight-food')).json.photos.length
 await call('/admin/settings', { token: owner, method: 'PATCH',
   body: { menuTheme: lookBefore.menuTheme, heroStyle: lookBefore.heroStyle } });
 
+console.log('\n── PUSH NOTIFICATIONS ──');
+const pushKey = await call('/public/push/key?restaurant=delight-food');
+ok(typeof pushKey.json.enabled === 'boolean', 'the storefront reports whether push is configured');
+
+// A subscription shaped as a browser hands it over. Never sent to — these tests
+// only exercise storage and the checks guarding it.
+const fakeSub = (id) => ({
+  endpoint: `https://push.example.test/probe/${id}`,
+  keys: { p256dh: 'BJ' + 'x'.repeat(85), auth: 'y'.repeat(22) },
+});
+
+const pushTbl = (await call('/public/tables?restaurant=delight-food')).json.tables[0];
+const pushItem = (await call('/public/menu?restaurant=delight-food')).json.categories[0].items[0];
+const pushPlaced = await call('/public/orders?restaurant=delight-food', { method: 'POST',
+  body: { cart: [{ menuItemId: pushItem.id, variantLabel: pushItem.variants[0]?.label ?? null, quantity: 1 }],
+          customerName: 'Push Tester', tableId: pushTbl.id } });
+ok(pushPlaced.status === 201, 'a probe order is placed to subscribe against');
+const pushOrder = pushPlaced.json.order;
+
+ok((await call('/public/push/subscribe?restaurant=delight-food', { method: 'POST',
+  body: { subscription: fakeSub('a'), orderNumber: pushOrder.orderNumber, token: 'wrong-name' } })).status === 403,
+  'a diner cannot subscribe to an order they cannot prove');
+ok((await call('/public/push/subscribe?restaurant=delight-food', { method: 'POST',
+  body: { subscription: fakeSub('a'), orderNumber: 999999, token: 'Push Tester' } })).status === 404,
+  'nor to an order that does not exist');
+ok((await call('/public/push/subscribe?restaurant=urban-slice', { method: 'POST',
+  body: { subscription: fakeSub('a'), orderNumber: pushOrder.orderNumber, token: 'Push Tester' } })).status === 404,
+  "nor reach it through another restaurant's storefront");
+ok((await call('/public/push/subscribe?restaurant=delight-food', { method: 'POST',
+  body: { subscription: fakeSub('a'), orderNumber: pushOrder.orderNumber, token: 'Push Tester' } })).status === 201,
+  'but can with the name the order was placed under');
+
+ok((await call('/admin/push/key')).status === 401, 'the admin push key needs a session');
+ok((await call('/admin/push/subscribe', { method: 'POST',
+  body: { subscription: fakeSub('kitchen') } })).status === 401, 'and so does subscribing the kitchen');
+ok((await call('/admin/push/subscribe', { token: staff, method: 'POST',
+  body: { subscription: fakeSub('kitchen') } })).status === 201, 'kitchen staff can subscribe their device');
+
+const kitchenEp = encodeURIComponent(fakeSub('kitchen').endpoint);
+ok((await call(`/admin/push/status?endpoint=${kitchenEp}`, { token: staff })).json.subscribed === true,
+  'and the device reports itself subscribed');
+ok((await call(`/admin/push/status?endpoint=${kitchenEp}`, { token: rival })).json.subscribed === false,
+  "another tenant's staff does not see that device");
+ok((await call('/admin/push/unsubscribe', { token: staff, method: 'POST',
+  body: { endpoint: fakeSub('kitchen').endpoint } })).status === 200, 'and can unsubscribe again');
+ok((await call(`/admin/push/status?endpoint=${kitchenEp}`, { token: staff })).json.subscribed === false,
+  'after which it is gone');
+
+// Cancelling the probe order takes the diner's subscription with it, so nothing
+// is left pointing at an endpoint that would only ever fail.
+await call(`/admin/orders/${pushOrder.id}/status`, { token: owner, method: 'PATCH',
+  body: { status: 'CANCELLED', note: 'push test cleanup' } });
+
 console.log('\n── ACCEPTING-ORDERS SWITCH ──');
 // Also establishes the precondition the lifecycle tests below depend on, rather
 // than assuming whatever state the restaurant happened to be left in.

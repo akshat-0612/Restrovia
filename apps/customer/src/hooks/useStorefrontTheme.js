@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { storefrontVars, storefrontTheme } from '@shared';
+import { storefrontVars, storefrontTheme, storefrontTitle } from '@shared';
 
 /**
  * Dresses the storefront in the theme its owner chose.
@@ -26,7 +26,50 @@ export function useStorefrontTheme(restaurant) {
 
     // Lets the browser's own furniture — form controls, scrollbars, the URL bar
     // on mobile Safari — match a light theme instead of staying dark.
-    root.style.colorScheme = storefrontTheme(restaurant.menuTheme).mode;
-    document.title = `${restaurant.name} — Order from your table`;
+    const theme = storefrontTheme(restaurant.menuTheme);
+    root.style.colorScheme = theme.mode;
+
+    document.title = storefrontTitle(restaurant);
+    setFavicon(restaurant);
+    setMeta('theme-color', theme.tokens['--bg']);
   }, [restaurant]);
+}
+
+/**
+ * Swaps the tab icon to the restaurant's logo.
+ *
+ * The build already writes this into the HTML for a storefront pinned to one
+ * restaurant. This is for the shared deployment, where the same files serve
+ * every restaurant and the correct icon is only knowable once the storefront
+ * config has loaded — and for any restaurant that changes its logo after the
+ * last build.
+ */
+function setFavicon(restaurant) {
+  const href = restaurant.logoUrl || emojiIcon(restaurant.logoEmoji || '🍽️');
+
+  for (const rel of ['icon', 'apple-touch-icon']) {
+    let link = document.querySelector(`link[rel="${rel}"]`);
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = rel;
+      document.head.appendChild(link);
+    }
+    if (link.href !== href) link.href = href;
+  }
+}
+
+function emojiIcon(emoji) {
+  return 'data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">${emoji}</text></svg>`
+  );
+}
+
+function setMeta(name, content) {
+  let tag = document.querySelector(`meta[name="${name}"]`);
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.name = name;
+    document.head.appendChild(tag);
+  }
+  tag.content = content;
 }
